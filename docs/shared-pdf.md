@@ -24,9 +24,10 @@ Krilla remains 0.8.2 with raster-image support only: the shared workspace turns 
 features off, so its naive `simple-text` shaping and the unmaintained `rustybuzz` and `ttf-parser`
 crates behind it are not built. WordCraft shapes text itself and hands Krilla positioned glyphs, so
 it does not enable the shared `write-simple-text` feature. WordCraft does not embed existing PDF
-pages, so it does not enable Krilla's optional `pdf` feature or the shared `write-pdf` feature. The shared writer has no parser dependency. Hayro syntax and interpretation
-remain explicit test dependencies at their existing registry versions; no parser or codec fork
-is introduced. The existing `craft-print` and `craft-ui` dependency pins are retained separately.
+pages, so it does not enable Krilla's optional `pdf` feature or the shared `write-pdf` feature.
+The shared writer has no parser dependency. Hayro syntax and interpretation remain explicit test
+dependencies at their existing registry versions; no parser or codec fork is introduced. The
+existing `craft-print` and `craft-ui` dependency pins are retained separately.
 
 Krilla's existing bundled profiles retain their upstream licences, recorded in the pinned shared
 repository's `licenses/pdf-writer/` and `ATTRIBUTION.md`. This migration
