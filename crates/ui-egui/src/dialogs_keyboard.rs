@@ -367,7 +367,7 @@ mod tests {
                 if fonts {
                     super::customize_keyboard(app, ui, form);
                 } else {
-                    crate::theme::install_fonts_for(ui.ctx(), false);
+                    crate::theme::install_fonts(ui.ctx());
                     fonts = true;
                 }
             },
@@ -431,6 +431,7 @@ mod tests {
                     unit: egui::MouseWheelUnit::Line,
                     delta: egui::vec2(0.0, dy),
                     phase: egui::TouchPhase::Move,
+                    source: egui::MouseWheelSource::Unknown,
                     modifiers: Default::default(),
                 });
                 h.step();

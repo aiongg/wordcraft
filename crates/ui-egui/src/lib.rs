@@ -530,6 +530,9 @@ pub struct WordApp {
     shot_token: u64,
     queued_shots: Vec<(u64, f64, u32)>,
     pending_shots: Vec<(u64, Option<String>, std::sync::mpsc::Sender<Value>, f64)>,
+    /// Screenshots egui has taken, by token; the callbacks of `issue_screenshots` send them here.
+    shots_tx: std::sync::mpsc::Sender<(u64, std::sync::Arc<egui::ColorImage>)>,
+    shots_rx: std::sync::mpsc::Receiver<(u64, std::sync::Arc<egui::ColorImage>)>,
     pub(crate) synthetic: Vec<egui::Event>,
     /// macOS: the primary button went down with Control, so it is being read as the secondary.
     control_click: bool,
@@ -538,15 +541,8 @@ pub struct WordApp {
     /// The Navigation pane's search box takes the keyboard on its next frame (Ctrl+F, #712).
     pub(crate) nav_search_focus: bool,
     styled: bool,
-    /// The CJK face order the installed UI fonts use (Chinese first, or Japanese first).
-    fonts_hans: bool,
-    /// Whether the installed UI fonts use the Korean CJK face order.
-    fonts_korean: bool,
-    /// Whether the installed UI fonts include an installed CJK fallback font (#241).
-    fonts_system_cjk: bool,
-    /// CJK text is (about to be) on screen in a non-CJK interface, e.g. the language names in
-    /// File ▸ Options: load the installed CJK fallback font if no embedded face covers it.
-    pub(crate) want_system_cjk: bool,
+    /// The interface language the installed UI fonts are ordered for.
+    pub(crate) fonts_language: &'static str,
     /// The document (id, revision) whose comment text [`WordApp::ensure_comment_fonts`] last
     /// looked at.
     comment_fonts_for: Option<(u64, u64)>,
@@ -650,6 +646,7 @@ impl WordApp {
         if let Some(tag) = sys_locale::get_locale() {
             wordcraft_engine::set_system_locale(&tag);
         }
+        let (shots_tx, shots_rx) = std::sync::mpsc::channel();
         WordApp {
             session,
             ui: UiState::default(),
@@ -669,15 +666,14 @@ impl WordApp {
             shot_token: 0,
             queued_shots: Vec::new(),
             pending_shots: Vec::new(),
+            shots_tx,
+            shots_rx,
             synthetic: Vec::new(),
             control_click: false,
             keytip_rects: Vec::new(),
             nav_search_focus: false,
             styled: false,
-            fonts_hans: false,
-            fonts_korean: false,
-            fonts_system_cjk: false,
-            want_system_cjk: false,
+            fonts_language: "",
             comment_fonts_for: None,
             fonts_frames: 0,
             applied_theme: None,
@@ -1867,9 +1863,6 @@ impl WordApp {
     /// those collections are too large to add here.
     fn ensure_caption_fonts(&mut self) {
         let stem = self.title_stem();
-        if stem.chars().any(wordcraft_fonts::is_cjk) {
-            self.want_system_cjk = true;
-        }
         let new = theme::faces_for_preedit(&stem, &self.canvas.ime_faces, theme::caption_char_covered, |c| {
             wordcraft_fonts::FontDb::global().fallback_for(c, u32::MAX)
         });
@@ -1895,9 +1888,6 @@ impl WordApp {
         for c in doc.comments.values() {
             chars.extend(c.author.chars());
             chars.extend(doc.plain_text(wordcraft_doc::StoryRef::Part(c.part)).chars());
-        }
-        if chars.iter().any(|c| wordcraft_fonts::is_cjk(*c)) {
-            self.want_system_cjk = true;
         }
         let text: String = chars.into_iter().collect();
         let new = theme::faces_for_preedit(&text, &self.canvas.ime_faces, theme::caption_char_covered, |c| {
@@ -2034,7 +2024,7 @@ impl WordApp {
         if self.autosaves() && self.session.dirty {
             ctx.request_repaint_after(std::time::Duration::from_millis(1000));
         }
-        self.collect_screenshots(ctx);
+        self.collect_screenshots();
         self.issue_screenshots(ctx);
         if !self.synthetic.is_empty() {
             ctx.request_repaint();
@@ -2073,13 +2063,9 @@ impl WordApp {
     /// Install the interface fonts when the language, the CJK fallback, or a caption fallback
     /// face has changed since the last install.
     fn install_ui_fonts(&mut self, ctx: &egui::Context, lang: i18n::Lang) {
-        let system_cjk = self.fonts_system_cjk || self.want_system_cjk || lang.uses_cjk();
-        if !self.styled || lang.prefers_hans() != self.fonts_hans || lang.prefers_korean() != self.fonts_korean || system_cjk != self.fonts_system_cjk
-        {
-            theme::install_fonts_language_extra(ctx, lang.prefers_hans(), lang.prefers_korean(), system_cjk, &self.canvas.ime_faces);
-            self.fonts_hans = lang.prefers_hans();
-            self.fonts_korean = lang.prefers_korean();
-            self.fonts_system_cjk = system_cjk;
+        if !self.styled || lang.code() != self.fonts_language {
+            theme::install_fonts_language(ctx, lang.code(), &self.canvas.ime_faces);
+            self.fonts_language = lang.code();
             // Mod with -, = and 0 are Word shortcuts (optional hyphen, subscript, paragraph spacing);
             // egui's keyboard zoom would also scale the whole window on them. Zoom is View › Zoom.
             // egui quits on Command-Q, which is Ctrl+Q off the Mac: Word's Reset Paragraph
@@ -2396,7 +2382,11 @@ impl WordApp {
         self.queued_shots.retain_mut(|(token, at, frames)| {
             *frames += 1;
             if now >= *at && *frames >= 3 {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(*token)));
+                let (tx, token, repaint) = (self.shots_tx.clone(), *token, ctx.clone());
+                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |image| {
+                    let _ = tx.send((token, image));
+                    repaint.request_repaint();
+                })));
                 false
             } else {
                 true
@@ -2407,24 +2397,11 @@ impl WordApp {
         }
     }
 
-    fn collect_screenshots(&mut self, ctx: &egui::Context) {
+    fn collect_screenshots(&mut self) {
         if self.pending_shots.is_empty() {
             return;
         }
-        let events: Vec<_> = ctx.input(|i| {
-            i.raw
-                .events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::Screenshot { user_data, image, .. } => {
-                        let token = user_data.data.as_ref().and_then(|d| d.downcast_ref::<u64>()).copied()?;
-                        Some((token, image.clone()))
-                    }
-                    _ => None,
-                })
-                .collect()
-        });
-        for (token, image) in events {
+        while let Ok((token, image)) = self.shots_rx.try_recv() {
             if let Some(i) = self.pending_shots.iter().position(|(t, ..)| *t == token) {
                 let (_, path, reply, _) = self.pending_shots.remove(i);
                 let _ = reply.send(control::save_screenshot(&image, path.as_deref()));
@@ -2754,7 +2731,6 @@ mod tests {
         let mut latin = app();
         latin.session.path = Some("report.docx".into());
         frame(&mut latin);
-        assert!(!latin.want_system_cjk);
         assert!(latin.canvas.ime_faces.is_empty(), "a Latin name needs no extra face");
 
         let mut hebrew = app();
@@ -2771,7 +2747,6 @@ mod tests {
         let mut cjk = app();
         cjk.session.path = Some("文档.docx".into());
         frame(&mut cjk);
-        assert!(cjk.want_system_cjk, "a CJK file name loads the CJK UI font");
         assert!(cjk.canvas.ime_faces.is_empty(), "CJK collections are not copied into the fallback list");
     }
 
@@ -3235,7 +3210,7 @@ mod tests {
         for _ in 0..2 {
             frame(&mut a, Vec::new());
         }
-        assert!(ctx.memory(|m| m.has_focus(egui::Id::new("find_what"))), "Find what has the focus");
+        assert!(ctx.memory(|m| m.has_focus(egui::Id::unique("find_what"))), "Find what has the focus");
         frame(&mut a, vec![egui::Event::Text("abc".into())]);
         let Some(dialogs::Dialog::Find { query, .. }) = &a.dialog else { panic!("no Find dialog") };
         assert!(query.ends_with("abc"), "typing went into Find what: {query:?}");
@@ -3268,7 +3243,7 @@ mod tests {
             for _ in 0..2 {
                 frame(&mut a, Vec::new());
             }
-            assert!(ctx.memory(|m| m.has_focus(egui::Id::new("link_address"))), "Address has focus");
+            assert!(ctx.memory(|m| m.has_focus(egui::Id::unique("link_address"))), "Address has focus");
             frame(&mut a, vec![event]);
             let Some(dialogs::Dialog::Link { url, text, .. }) = &a.dialog else { panic!("no Link dialog") };
             assert_eq!(url, expected, "input replaces the initial address");
@@ -3308,6 +3283,7 @@ mod tests {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, y),
             phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers: egui::Modifiers::COMMAND,
         };
         frame(&mut a, vec![wheel(1.0)]);
@@ -3353,6 +3329,7 @@ mod tests {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, y),
             phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers,
         };
         // Away from the caret, several pages down.
@@ -3456,7 +3433,13 @@ mod tests {
         }
         let over_page = a.canvas.canvas_rect.unwrap().center();
         frame(&mut a, vec![egui::Event::PointerMoved(over_page)]);
-        let wheel = |unit, y: f32, phase| egui::Event::MouseWheel { unit, delta: egui::vec2(0.0, y), phase, modifiers: egui::Modifiers::NONE };
+        let wheel = |unit, y: f32, phase| egui::Event::MouseWheel {
+            unit,
+            delta: egui::vec2(0.0, y),
+            phase,
+            source: egui::MouseWheelSource::Unknown,
+            modifiers: egui::Modifiers::NONE,
+        };
         let start = a.canvas.scroll_offset.y;
         frame(&mut a, vec![wheel(egui::MouseWheelUnit::Point, -40.0, egui::TouchPhase::Start)]);
         assert_eq!(a.canvas.scroll_offset.y, start + 40.0, "the first touchpad delta lands in the same frame");
@@ -3667,6 +3650,7 @@ mod tests {
                 unit: egui::MouseWheelUnit::Point,
                 delta: egui::vec2(0.0, -65.0),
                 phase: egui::TouchPhase::Start,
+                source: egui::MouseWheelSource::Unknown,
                 modifiers: egui::Modifiers::NONE,
             }],
             screen,
@@ -3813,6 +3797,7 @@ mod tests {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, -1.0),
             phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers: egui::Modifiers::NONE,
         };
         let notch = crate::scroll::notch_px(a.canvas.scale / crate::canvas::PX_PER_PT);
@@ -3868,6 +3853,7 @@ mod tests {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, notches),
             phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers: egui::Modifiers::COMMAND,
         };
         let opts = egui::InputOptions::default();
@@ -3933,6 +3919,7 @@ mod tests {
                 unit: egui::MouseWheelUnit::Point,
                 delta: egui::vec2(0.0, delta),
                 phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Unknown,
                 modifiers,
             };
             // Scroll down a little, so the pointer is well inside the document.
@@ -4058,6 +4045,7 @@ mod tests {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, -3.0),
             phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers: egui::Modifiers::NONE,
         };
         frame(&mut a, vec![egui::Event::PointerMoved(mid), wheel]);
@@ -4340,7 +4328,7 @@ mod tests {
         for _ in 0..2 {
             control_frame(&mut a, &ctx, true);
         }
-        assert!(ctx.memory(|m| m.has_focus(egui::Id::new("find_what"))));
+        assert!(ctx.memory(|m| m.has_focus(egui::Id::unique("find_what"))));
         for _ in 0..2 {
             control_frame(&mut a, &ctx, false);
         }
@@ -4926,7 +4914,7 @@ mod tests {
                 if fonts {
                     dialogs::show(app, &ctx);
                 } else {
-                    theme::install_fonts_for(&ctx, false);
+                    theme::install_fonts(&ctx);
                     fonts = true;
                 }
             },
@@ -4961,7 +4949,7 @@ mod tests {
                     if fonts {
                         dialogs::show(app, &ctx);
                     } else {
-                        theme::install_fonts_for(&ctx, false);
+                        theme::install_fonts(&ctx);
                         fonts = true;
                     }
                 },
@@ -5013,7 +5001,7 @@ mod tests {
                     if fonts {
                         dialogs::show(app, &ctx);
                     } else {
-                        theme::install_fonts_for(&ctx, false);
+                        theme::install_fonts(&ctx);
                         fonts = true;
                     }
                 },
@@ -5304,6 +5292,7 @@ mod tests {
             unit: egui::MouseWheelUnit::Point,
             delta: egui::vec2(-120.0, -120.0),
             phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers: egui::Modifiers::NONE,
         });
         h.run_steps(20);
@@ -7200,7 +7189,7 @@ mod tests {
         a.services.pasted = Some(q.clone());
         a.run("ui.dialog", json!({"name": "find"})).unwrap();
         let mut h = paste_harness(a);
-        h.ctx.memory_mut(|m| m.request_focus(egui::Id::new("find_what")));
+        h.ctx.memory_mut(|m| m.request_focus(egui::Id::unique("find_what")));
         h.step();
         h.step();
         assert!(!h.state().canvas.focused);
@@ -7839,7 +7828,7 @@ mod tests {
         let key = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
         h.event(egui::Event::Text("Kilns fire clay. Kilns cool.".into()));
         h.step();
-        let nav_query = |h: &egui_kittest::Harness<WordApp>| h.ctx.data(|d| d.get_temp::<String>(egui::Id::new("nav_query"))).unwrap_or_default();
+        let nav_query = |h: &egui_kittest::Harness<WordApp>| h.ctx.data(|d| d.get_temp::<String>(egui::Id::unique("nav_query"))).unwrap_or_default();
         // Ctrl+F: the pane, and typing goes into its search box.
         h.event(key(egui::Key::F, egui::Modifiers::COMMAND));
         h.step();

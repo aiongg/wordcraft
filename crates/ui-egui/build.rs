@@ -7,6 +7,13 @@
 //!   JSON says the entry was verified (`people_entry`).
 //!
 //! A missing or malformed file gives empty tables (or no names) and a warning.
+//!
+//! It also embeds the interface faces of craft-fonts (`CRAFT_FONTS_DIR`) as `theme::UI_FACES`: the
+//! CJK interface faces cut to the characters of the translation catalogs in `src/i18n/` and the
+//! language names, and the faces for the scripts and symbols the interface draws beyond the
+//! document fonts (Georgian, Armenian, Ethiopic, Noto Sans, monochrome emoji). The interface
+//! shares the other faces with the documents (`wordcraft_fonts::CRAFT_FONTS`). Web builds embed
+//! none: their interface takes the documents' BIZ UDPGothic.
 
 use std::fmt::Write as _;
 
@@ -23,6 +30,44 @@ fn main() {
     let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap_or_default()).join("credits.rs");
     if let Err(e) = std::fs::write(&out, generate(&json, &people)) {
         println!("cargo::warning=writing {}: {e}", out.display());
+    }
+    ui_faces();
+}
+
+/// Interface faces outside the CJK cuts and the document fonts.
+const UI_EXTRA_FAMILIES: &[&str] = &["Noto Sans Georgian", "Noto Sans Armenian", "Noto Sans Ethiopic", "Noto Sans", "Noto Emoji"];
+
+/// The document families (`crates/fonts/build.rs`) the interface shares.
+const SHARED_DOCUMENT_FAMILIES: &[&str] = &[
+    "Noto Sans Arabic",
+    "Noto Sans Thai",
+    "Noto Sans Symbols",
+    "Noto Sans Symbols 2",
+    "Noto Color Emoji",
+    "Noto Sans Math",
+    "BIZ UDPGothic",
+    "BIZ UDMincho",
+    "Shippori Mincho",
+    "Noto Sans CJK SC",
+];
+
+fn ui_faces() {
+    let i18n = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/i18n");
+    println!("cargo::rerun-if-changed={}", i18n.display());
+    let mut texts: Vec<std::path::PathBuf> =
+        std::fs::read_dir(&i18n).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "tsv")).collect();
+    texts.sort();
+    // The language names of the Options list, each in its own script.
+    texts.push(i18n.join("mod.rs"));
+    let wasm = craft_fonts_build::target_is_wasm();
+    let written = craft_fonts_build::Embed::new()
+        .for_ui()
+        .subset_to(texts)
+        .filter(move |face| !wasm && (face.is_ui() || UI_EXTRA_FAMILIES.contains(&face.family.as_str())))
+        .embedded_elsewhere(SHARED_DOCUMENT_FAMILIES)
+        .write("ui_faces.rs");
+    if let Err(e) = written {
+        println!("cargo::error={e}");
     }
 }
 

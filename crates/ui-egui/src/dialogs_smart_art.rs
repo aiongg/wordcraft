@@ -295,7 +295,7 @@ pub fn frame_button(app: &mut WordApp, ctx: &egui::Context, layout: &wordcraft_l
         return;
     }
     let t = Tokens::get(ctx);
-    egui::Area::new(egui::Id::new("smart_art_frame_button")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
+    egui::Area::new(egui::Id::unique("smart_art_frame_button")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
         egui::Frame::NONE.fill(t.panel).stroke(Stroke::new(1.0, t.border)).corner_radius(4).inner_margin(2).show(ui, |ui| {
             if crate::widgets::icon_button(ui, "textPane", tl!("Text Pane")).clicked() {
                 let _ = app.run("smartArt.textPane", json!({"value": true}));
@@ -329,7 +329,7 @@ pub fn text_pane(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     ui.label(egui::RichText::new(tl!("One line per item. Enter adds an item.")).color(t.text_dim));
     ui.add_space(4.0);
-    let focus_id = egui::Id::new("smart_art_focus");
+    let focus_id = egui::Id::unique("smart_art_focus");
     let want_focus: Option<usize> = ui.data_mut(|d| d.remove_temp(focus_id));
     let mut typed = false;
     egui::ScrollArea::vertical().id_salt("smart_art_items").max_height((ui.available_height() - 40.0).max(60.0)).show(ui, |ui| {

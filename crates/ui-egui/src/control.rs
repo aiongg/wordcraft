@@ -244,7 +244,7 @@ pub fn handle(app: &mut WordApp, ctx: &egui::Context, req: &ControlRequest) -> O
             };
             let delta = egui::vec2(f("dx").unwrap_or(0.0), f("dy").unwrap_or(0.0));
             app.synthetic.push(egui::Event::PointerMoved(egui::pos2(x, y)));
-            app.synthetic.push(egui::Event::MouseWheel { unit, delta, phase, modifiers: mods(p) });
+            app.synthetic.push(egui::Event::MouseWheel { unit, delta, phase, source: egui::MouseWheelSource::Unknown, modifiers: mods(p) });
             ok(json!({"queued": true}))
         }
         "ui.text" => {

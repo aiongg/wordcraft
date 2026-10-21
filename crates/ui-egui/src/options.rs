@@ -118,7 +118,7 @@ pub fn page(app: &mut WordApp, ui: &mut Ui) {
                 let label = tl!(pane_label(id));
                 let active = current == id;
                 let (r, resp) = ui.allocate_exact_size(vec2(170.0, 30.0), egui::Sense::click());
-                resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, active, label));
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, label));
                 if active {
                     ui.painter().rect_filled(r, 4.0, t.checked);
                 } else if resp.hovered() {
@@ -287,7 +287,7 @@ fn proofing(app: &mut WordApp, ui: &mut Ui) {
 /// dictionary kept in a folder of the user's own.
 fn dictionaries(app: &mut WordApp, ui: &mut Ui) {
     let saved = app.session.prefs.dictionaries_folder.clone().unwrap_or_default();
-    let id = egui::Id::new("options_dictionaries_folder");
+    let id = egui::Id::unique("options_dictionaries_folder");
     let mut folder = ui.data(|d| d.get_temp::<String>(id)).unwrap_or_else(|| saved.clone());
     ui.label(tl!("Dictionaries folder:"));
     ui.horizontal(|ui| {
@@ -311,7 +311,7 @@ fn dictionaries(app: &mut WordApp, ui: &mut Ui) {
     ui.data_mut(|d| d.insert_temp(id, folder));
     note(ui, "Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.");
     // The dictionary each language found, looked up again after the folder changes.
-    let found_id = egui::Id::new("options_dictionaries_found");
+    let found_id = egui::Id::unique("options_dictionaries_found");
     let generation = wordcraft_engine::proof::dictionary_generation();
     let cached = ui.data(|d| d.get_temp::<(u64, Vec<(String, Option<String>, Option<String>)>)>(found_id)).filter(|(g, _)| *g == generation);
     let found = match cached {
@@ -377,7 +377,7 @@ fn custom_dictionary(app: &mut WordApp, ui: &mut Ui) {
             });
         }
     });
-    let id = egui::Id::new("options_dictionary_new");
+    let id = egui::Id::unique("options_dictionary_new");
     let mut word = ui.data(|d| d.get_temp::<String>(id)).unwrap_or_default();
     ui.horizontal(|ui| {
         let r = ui.add(egui::TextEdit::singleline(&mut word).desired_width(220.0).char_limit(MAX_WORD_CHARS).hint_text(tl!("New word")));
@@ -623,8 +623,6 @@ fn animations_picker(app: &mut WordApp, ui: &mut Ui) {
 /// Interface language: follow the system (the default) or pick one (#8).
 fn language_picker(app: &mut WordApp, ui: &mut Ui) {
     use crate::i18n::{AUTO, Lang};
-    // The language names are in their own scripts: fonts for them load from the next frame.
-    app.want_system_cjk = true;
     let system = crate::i18n::system_lang();
     let auto_label = crate::i18n::fmt(tl!("Automatic ({language})"), &[("language", system.name())]);
     let current = if app.ui.language == AUTO { auto_label.clone() } else { Lang::from_pref(&app.ui.language).name().to_string() };

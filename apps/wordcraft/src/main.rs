@@ -379,6 +379,8 @@ fn main() -> eframe::Result {
             .with_fullsize_content_view(true)
             .with_titlebar_shown(false)
             .with_title_shown(false),
+        // The interface's font stack (craft_ui::fonts) looks up installed fonts itself.
+        system_font_fallback: false,
         ..Default::default()
     };
     if let Some(icon) = app_icon() {

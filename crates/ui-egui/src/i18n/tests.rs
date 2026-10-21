@@ -461,74 +461,26 @@ fn bundled_interface_fonts_cover_czech_without_system_fallbacks() {
 }
 
 #[test]
-fn chinese_interface_fonts_load_and_cover_simplified_hanzi() {
-    // #241: without an embedded Chinese face the interface adds an installed CJK font; egui must
-    // accept it (it panics on font data it can't parse) and draw simplified-only hanzi with it.
-    let ctx = egui::Context::default();
-    ctx.set_fonts(crate::theme::font_definitions(true, true));
-    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
-    let covered = ctx.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(14.0), "删除页选"));
-    let (catalogs, _) = Lang::cjk_font_text(true);
-    let embedded = !wordcraft_fonts::ui_needs_system_cjk(&catalogs, &wordcraft_fonts::ui_cjk_fonts(true));
-    if embedded || wordcraft_fonts::system_cjk_ui_font(true, &['页']).is_some() {
-        assert!(covered, "a Chinese face is available but the interface lacks simplified hanzi");
-    }
-}
-
-#[test]
-fn korean_interface_fonts_load_and_cover_hangul() {
-    let ctx = egui::Context::default();
-    ctx.set_fonts(crate::theme::font_definitions_language(false, true, true));
-    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
-    let covered = ctx.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(14.0), "한글"));
-    let (catalogs, names) = Lang::cjk_font_text_for(false, true);
-    let mut texts = catalogs;
-    texts.push(&names);
-    let embedded = !wordcraft_fonts::ui_needs_system_cjk(&texts, &wordcraft_fonts::ui_cjk_fonts_for(false, true));
-    if embedded || wordcraft_fonts::system_cjk_ui_font_for(false, true, &['한']).is_some() {
-        assert!(covered, "a Korean face is available but the interface lacks Hangul glyphs");
-    }
-}
-
-#[test]
-fn cjk_catalogs_are_covered_by_the_embedded_interface_faces() {
-    // #486: every CJK character of the Chinese, Japanese and Korean catalogs and language names
-    // has a glyph in the interface font chain built from the embedded faces alone, in every
-    // interface weight; `?` and boxes showed where the Japanese face was the only CJK one. Needs
-    // a craft-fonts build (CRAFT_FONTS_DIR); without one there is nothing embedded to check, and
-    // the interface reads an installed CJK font instead.
-    if wordcraft_fonts::ui_cjk_fonts(false).is_empty() {
+fn catalogs_are_covered_by_the_embedded_interface_faces() {
+    // #241, #486: every character of each language's catalog and of the language names (the
+    // Options list) has a glyph in the interface stack built for that language from the embedded
+    // faces alone; `?` and boxes showed where the Japanese face was the only CJK one. Needs a
+    // craft-fonts build (CRAFT_FONTS_DIR); without one, CJK and other scripts come from installed
+    // fonts.
+    if crate::theme::craft_faces().is_empty() {
         eprintln!("skipped: built without craft-fonts (CRAFT_FONTS_DIR)");
         return;
     }
-    let names: String = Lang::all().map(Lang::name).collect();
-    for code in ["zh-hans", "zh-hant", "ja", "ko"] {
-        let l = lang(code);
-        let ctx = egui::Context::default();
-        ctx.set_fonts(crate::theme::font_definitions_language(l.prefers_hans(), l.prefers_korean(), false));
-        ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
+    let names: String = Lang::all().map(Lang::name).collect::<Vec<_>>().join(" ");
+    for l in Lang::all() {
         let (entries, errors) = parse_entries(l.0.source);
-        assert!(errors.is_empty(), "{code}: {errors:?}");
-        let chars: std::collections::BTreeSet<char> =
-            entries.iter().flat_map(|e| e.translation.chars()).chain(names.chars()).filter(|c| wordcraft_fonts::is_cjk(*c)).collect();
-        assert!(chars.len() > 300, "{code}: {} CJK characters", chars.len());
-        for font in [crate::theme::regular(14.0), crate::theme::medium(14.0), crate::theme::semibold(14.0)] {
-            let missing: String = ctx.fonts_mut(|f| chars.iter().filter(|c| !f.has_glyph(&font, **c)).collect());
-            assert!(missing.is_empty(), "{code}: no glyph in {font:?} for {missing}");
-        }
-        // So the interface reads no installed CJK font for these languages.
-        assert_eq!(
-            wordcraft_fonts::ui_uncovered_cjk(&[l.0.source, &names], &wordcraft_fonts::ui_cjk_fonts_for(l.prefers_hans(), l.prefers_korean())),
-            Vec::<char>::new()
-        );
+        assert!(errors.is_empty(), "{}: {errors:?}", l.code());
+        let samples = entries
+            .iter()
+            .map(|e| craft_ui::fonts::Sample { language: l.code(), key: &e.source, text: &e.translation })
+            .chain([craft_ui::fonts::Sample { language: l.code(), key: "language names", text: &names }]);
+        craft_ui::fonts::assert_covers(&crate::theme::font_stack(l.code(), &[]), samples);
     }
-}
-
-#[test]
-fn only_cjk_languages_ask_for_an_installed_cjk_font() {
-    // #241 follow-up: an English interface must not read a large system CJK font on startup.
-    let cjk: Vec<&str> = Lang::all().filter(|l| l.uses_cjk()).map(Lang::code).collect();
-    assert_eq!(cjk, ["zh-hans", "zh-hant", "ja", "ko"]);
 }
 
 #[test]
@@ -823,7 +775,6 @@ fn bundled_interface_fonts_cover_turkish_without_system_fallbacks() {
             assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch}");
         }
     }
-    assert!(!lang("tr").uses_cjk());
 }
 
 #[test]
@@ -904,7 +855,6 @@ fn bundled_interface_fonts_cover_hungarian_without_system_fallbacks() {
             assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch}");
         }
     }
-    assert!(!lang("hu").uses_cjk());
 }
 
 #[test]
@@ -960,7 +910,6 @@ fn bundled_interface_fonts_cover_french_without_system_fallbacks() {
             assert_ne!(face.glyph_for(ch), 0, "Inter {style} lacks {ch:?}");
         }
     }
-    assert!(!lang("fr").uses_cjk());
 }
 
 #[test]
@@ -1308,7 +1257,6 @@ fn bundled_interface_fonts_cover_bulgarian_without_system_fallbacks() {
             assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch}");
         }
     }
-    assert!(!lang("bg").uses_cjk());
 }
 
 #[test]
@@ -1393,7 +1341,6 @@ fn bundled_interface_fonts_cover_croatian_without_system_fallbacks() {
             assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch}");
         }
     }
-    assert!(!lang("hr").uses_cjk());
 }
 
 #[test]
@@ -1471,7 +1418,6 @@ fn bundled_interface_fonts_cover_swedish_letters() {
             assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch}");
         }
     }
-    assert!(!lang("sv").uses_cjk());
 }
 
 #[test]
@@ -1558,5 +1504,4 @@ fn bundled_interface_fonts_cover_vietnamese_letters() {
             assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch:?}");
         }
     }
-    assert!(!lang("vi").uses_cjk());
 }

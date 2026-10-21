@@ -154,8 +154,8 @@ pub fn insert_button(ui: &mut Ui, app: &mut WordApp) {
     let (r, _) = ui.allocate_exact_size(vec2(w, CONTENT_H), Sense::hover());
     let top = Rect::from_min_max(r.min, pos2(r.max.x, r.min.y + BIG_LABEL_Y - 2.0));
     let bottom = Rect::from_min_max(pos2(r.min.x, r.min.y + BIG_LABEL_Y - 2.0), r.max);
-    let rt = ui.interact(top, ui.id().with("eq_insert_top"), Sense::click());
-    let rb = ui.interact(bottom, ui.id().with("eq_insert_bottom"), Sense::click());
+    let rt = ui.interact(top, ui.scope_id().with("eq_insert_top"), Sense::click());
+    let rb = ui.interact(bottom, ui.scope_id().with("eq_insert_bottom"), Sense::click());
     for (rr, resp) in [(top, &rt), (bottom, &rb)] {
         if resp.hovered() {
             ui.painter().rect_filled(rr, 4.0, t.hover);
@@ -178,10 +178,10 @@ pub fn insert_button(ui: &mut Ui, app: &mut WordApp) {
 
 /// The Symbols group: a strip of the current set's symbols, and a menu with every set.
 fn symbols(ui: &mut Ui, app: &mut WordApp) {
-    let id = egui::Id::new("eq_symbol_set");
+    let id = egui::Id::unique("eq_symbol_set");
     let set = ui.data(|d| d.get_temp::<usize>(id)).unwrap_or(0).min(SYMBOL_SETS.len().saturating_sub(1));
     let Some((_, chars)) = SYMBOL_SETS.get(set) else { return };
-    let start_id = egui::Id::new("eq_symbol_start");
+    let start_id = egui::Id::unique("eq_symbol_start");
     let per_row = 10usize;
     let rows = 3usize;
     let all: Vec<char> = chars.chars().collect();

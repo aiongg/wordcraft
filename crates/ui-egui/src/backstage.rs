@@ -59,7 +59,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
                 // The chevron's stroke starts at the content edge.
                 let c = back_chevron_c(band.min.x, band.center().y, app.session.view.full_screen, app.mac_titlebar.content_left);
-                let resp = ui.interact(Rect::from_center_size(c, vec2(22.0, band.height())), ui.id().with("backstage_back"), Sense::click());
+                let resp = ui.interact(Rect::from_center_size(c, vec2(22.0, band.height())), ui.scope_id().with("backstage_back"), Sense::click());
                 icons::paint(ui.painter(), Rect::from_center_size(c, vec2(18.0, 18.0)), "chevronLeft", egui::Color32::WHITE, egui::Color32::WHITE);
                 resp
             } else {
@@ -83,7 +83,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 // No document open (#1129): Info, Save, Save As, Print and Export are greyed out.
                 let on = has_document || works_without_document(id);
                 let (r, resp) = ui.add_enabled_ui(on, |ui| ui.allocate_exact_size(vec2(200.0, 38.0), Sense::click())).inner;
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, on, tl!(label)));
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, on, tl!(label)));
                 let active = app.ui.backstage_page == id;
                 if active {
                     ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(46));
@@ -131,7 +131,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 for (label, id) in [("About", "about"), ("Discord community", "discord")] {
                     let (r, resp) = ui.allocate_exact_size(vec2(200.0, 32.0), Sense::click());
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tl!(label)));
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), tl!(label)));
                     if resp.hovered() {
                         ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(26));
                     }
@@ -252,7 +252,7 @@ fn template_tile(ui: &mut Ui, app: &mut WordApp, label: &str, template: &str) {
         let ppp = ui.ctx().pixels_per_point();
         let key = format!("tpl:{template}:{ppp}");
         let region = app.session.region();
-        let tex = ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(egui::Id::new(&key))).or_else(|| {
+        let tex = ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(egui::Id::unique(&key))).or_else(|| {
             let mut s = wordcraft_engine::Session::new(wordcraft_doc::Document::new());
             // The blank tile shows the region's paper (#838).
             s.system_region = region;
@@ -266,7 +266,7 @@ fn template_tile(ui: &mut Ui, app: &mut WordApp, label: &str, template: &str) {
                 egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &px),
                 egui::TextureOptions::LINEAR,
             );
-            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(&key), h.clone()));
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique(&key), h.clone()));
             Some(h)
         });
         if let Some(h) = tex {
@@ -334,7 +334,7 @@ fn home_page(app: &mut WordApp, ui: &mut Ui) {
 fn new_page(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     heading(ui, "New");
-    let id = egui::Id::new("backstage_template_search");
+    let id = egui::Id::unique("backstage_template_search");
     let mut query = ui.ctx().data(|d| d.get_temp::<String>(id)).unwrap_or_default();
     let search = ui.add(egui::TextEdit::singleline(&mut query).hint_text(tl!("Search for templates")).desired_width(360.0));
     if search.changed() {
@@ -383,7 +383,7 @@ fn open_list(app: &mut WordApp, ui: &mut Ui) {
 }
 
 fn open_error_id() -> egui::Id {
-    egui::Id::new("backstage_open_error")
+    egui::Id::unique("backstage_open_error")
 }
 
 /// Drop the Recent list's open error once File is closed, so it doesn't come back next time.

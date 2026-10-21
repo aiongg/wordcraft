@@ -9,7 +9,7 @@ description = "WordCraft egui front end (Word-style ribbon UI); swappable: nothi
 workspace = true
 
 [dependencies]
-craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d" }
+craft-ui = { git = "https://github.com/aiongg/craft-libs", rev = "0554adc" }
 wordcraft-geom = { workspace = true }
 wordcraft-doc = { workspace = true }
 unicode-bidi = { workspace = true }
@@ -31,6 +31,10 @@ sys-locale = { version = "0.3", features = ["js"] }
 # Linux only, where winit reports no system theme: the desktop portal's light/dark answer (see
 # `desktop_theme.rs`). Already in the tree, with these features, through egui's own accessibility
 # bus; pinned to one version so nothing is built twice.
+# Installed fonts for characters the interface faces lack, and colour emoji.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+craft-ui = { git = "https://github.com/aiongg/craft-libs", rev = "0554adc", features = ["system_fonts", "color_fonts"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "=5.19.0"
 
@@ -39,10 +43,14 @@ zbus = "=5.19.0"
 js-sys = "0.3"
 
 [dev-dependencies]
+# Tests that draw without the app's fonts use egui's own (the app's eframe turns them on).
+egui = { workspace = true, features = ["default_fonts"] }
 cfb = { workspace = true }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
 zip = { workspace = true }
 
 [build-dependencies]
+# Cuts the CJK interface faces to the catalogs' characters (`build.rs`).
+craft-fonts-build = { workspace = true, features = ["subset"] }
 serde_json = { workspace = true }
 toml = "1"

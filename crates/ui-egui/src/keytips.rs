@@ -7,18 +7,18 @@ use egui::{Align2, CornerRadius, Rect, Stroke, Ui, Vec2};
 use crate::WordApp;
 use crate::theme::{Tokens, semibold};
 
-/// egui ids the ribbon publishes its keytip state under (accessors, since `Id::new` isn't const).
+/// egui ids the ribbon publishes its keytip state under (accessors, since `Id::unique` isn't const).
 pub fn phase_id() -> egui::Id {
-    egui::Id::new("wc_keytips_phase")
+    egui::Id::unique("wc_keytips_phase")
 }
 pub fn tab_id() -> egui::Id {
-    egui::Id::new("wc_keytips_tab")
+    egui::Id::unique("wc_keytips_tab")
 }
 pub fn letters_id() -> egui::Id {
-    egui::Id::new("wc_keytips_letters")
+    egui::Id::unique("wc_keytips_letters")
 }
 pub fn rects_id() -> egui::Id {
-    egui::Id::new("wc_keytips_rects")
+    egui::Id::unique("wc_keytips_rects")
 }
 
 /// A bare Alt press (either Alt key) arms or cancels keytips.

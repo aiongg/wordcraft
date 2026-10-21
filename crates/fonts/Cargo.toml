@@ -9,6 +9,7 @@ description = "WordCraft fonts: font database (bundled OFL + system), metrics, g
 workspace = true
 
 [dependencies]
+craft-fonts-build = { workspace = true }
 kurbo = { workspace = true }
 skrifa = { workspace = true }
 harfrust = { workspace = true }
@@ -16,3 +17,6 @@ wuff = { workspace = true }
 unicode-bidi = { workspace = true }
 unicode-script = { workspace = true }
 log = { workspace = true }
+
+[build-dependencies]
+craft-fonts-build = { workspace = true }

@@ -352,7 +352,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                         if share_text {
                             ui.painter().text(pos2(r.min.x + 26.0, r.center().y), Align2::LEFT_CENTER, share, medium(12.0), t.on_accent);
                         }
-                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, share));
+                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, share));
                         if resp.on_hover_text(tl!("Export a copy to share (PDF, Word document)")).clicked() {
                             let _ = app.run("ui.backstage", json!({"value": true, "page": "export"}));
                         }
@@ -398,7 +398,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                 crate::keytips::record_tab(r, tab, &app.ui.keytip_prefix, &mut app.keytip_rects);
                             }
                             let active = app.ui.tab == tab && !app.ui.backstage;
-                            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, active, shown));
+                            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, shown));
                             if resp.hovered() && !active {
                                 ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.hover);
                             }
@@ -487,11 +487,17 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             if !app.has_document() && app.ui.tab != "Help" {
                 ui.disable();
             }
-            let bg = ui.interact(ui.max_rect(), ui.id().with("ribbon_background"), Sense::click());
+            let bg = ui.interact(ui.max_rect(), ui.scope_id().with("ribbon_background"), Sense::click());
             bg.context_menu(|ui| crate::widgets::customize_menu_items(ui, app));
             let entry = user_tabs.iter().find(|e| e.name == app.ui.tab);
             crate::ribbon_fit::begin(ui.ctx(), &app.ui.tab, ui.available_width() - 4.0);
-            let scroll = egui::ScrollArea::horizontal().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
+            // An edge chevron's click scrolls the row on the next frame.
+            let scroll_to = ui.scope_id().with("ribbon_scroll_to");
+            let mut area = egui::ScrollArea::horizontal().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+            if let Some(x) = ui.data_mut(|d| d.remove_temp::<f32>(scroll_to)) {
+                area = area.horizontal_scroll_offset(x);
+            }
+            let scroll = area.show(ui, |ui| {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
                     match entry {
@@ -533,7 +539,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             // where more is and scroll it on click. Every command also stays reachable through Search Commands.
             let r = scroll.inner_rect;
             let overflow = scroll.content_size.x - r.width();
-            let offset = scroll.state.offset.x;
+            let offset = scroll.state.clamped_offset().x;
             let step = 160.0;
             let mut next = None;
             if offset > 1.0 {
@@ -549,9 +555,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
             }
             if let Some(x) = next {
-                let mut state = scroll.state;
-                state.offset.x = x.clamp(0.0, overflow.max(0.0));
-                state.store(ui.ctx(), scroll.id);
+                ui.data_mut(|d| d.insert_temp(scroll_to, x.clamp(0.0, overflow.max(0.0))));
+                ui.ctx().request_repaint();
             }
         });
 }
@@ -596,7 +601,7 @@ fn two_lines(label: &str) -> String {
 
 /// A chevron over a ribbon edge that is also a button; `true` on the frame it is clicked.
 fn edge_cue(ui: &mut Ui, rect: Rect, glyph: &str, hint: &str, t: &Tokens) -> bool {
-    let resp = ui.interact(rect, ui.id().with(glyph), Sense::click()).on_hover_text(hint);
+    let resp = ui.interact(rect, ui.scope_id().with(glyph), Sense::click()).on_hover_text(hint);
     let ink = if resp.hovered() { t.text } else { t.text_dim };
     ui.painter().rect_filled(rect, 0.0, t.ribbon);
     ui.painter().text(rect.center(), Align2::CENTER_CENTER, glyph, egui::FontId::proportional(18.0), ink);
@@ -2554,7 +2559,7 @@ fn picture_format(app: &mut WordApp, ui: &mut Ui) {
                 Some((pos, wordcraft_doc::para::InlineObject::Image { media, .. })) => (media, pos.off),
                 _ => (String::new(), 0),
             };
-            let key = egui::Id::new(("picture_transparency", media, off));
+            let key = egui::Id::unique(("picture_transparency", media, off));
             let mut v = ui.data(|d| d.get_temp::<f64>(key)).unwrap_or(0.0);
             let r = ui.add(egui::DragValue::new(&mut v).speed(1.0).range(0.0..=100.0).suffix("%"));
             if r.changed() {
@@ -2629,7 +2634,7 @@ fn picture_format(app: &mut WordApp, ui: &mut Ui) {
                     ));
                     // While typing, the field reports each keystroke as a change; only a new
                     // value (Enter, Tab, a click elsewhere, a drag) resizes, and Esc cancels.
-                    let cancelled = esc_cancelled(ui, &r, egui::Id::new(("picture_size_field", key)));
+                    let cancelled = esc_cancelled(ui, &r, egui::Id::unique(("picture_size_field", key)));
                     if r.changed() && v != was && !cancelled {
                         if r.dragged() && !r.drag_started() {
                             app.session.join_next_undo();
@@ -2665,7 +2670,7 @@ fn picture_format(app: &mut WordApp, ui: &mut Ui) {
                 ui.label(egui::RichText::new(tl!("Alt:")).small());
                 // Frame-local buffers lose keystrokes; keep the draft in egui temp memory keyed
                 // by picture (same pattern as the comment editor in panes.rs).
-                let key = egui::Id::new(("picture_alt", media.clone(), off));
+                let key = egui::Id::unique(("picture_alt", media.clone(), off));
                 let mut alt = ui.data(|d| d.get_temp::<String>(key)).unwrap_or_else(|| alt0.clone());
                 let r = ui.add(egui::TextEdit::singleline(&mut alt).desired_width(120.0).hint_text(tl!("Alt text")));
                 if r.changed() {

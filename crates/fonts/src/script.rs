@@ -9,6 +9,22 @@
 
 use unicode_script::{Script, UnicodeScript};
 
+/// Is `c` drawn from a CJK font: Han ideographs, kana, bopomofo, Hangul, CJK punctuation or a
+/// full-width form? (Latin, Cyrillic and symbols come from the interface's Latin faces.)
+pub fn is_cjk(c: char) -> bool {
+    matches!(c,
+        '\u{2E80}'..='\u{2FDF}' // radicals
+        | '\u{3000}'..='\u{33FF}' // punctuation, kana, bopomofo, compatibility
+        | '\u{3400}'..='\u{4DBF}' // extension A
+        | '\u{4E00}'..='\u{9FFF}' // unified ideographs
+        | '\u{AC00}'..='\u{D7AF}' // Hangul syllables
+        | '\u{F900}'..='\u{FAFF}' // compatibility ideographs
+        | '\u{FE30}'..='\u{FE4F}' // vertical forms
+        | '\u{FF00}'..='\u{FFEF}' // full-width forms
+        | '\u{20000}'..='\u{3FFFF}' // extensions B and later
+    )
+}
+
 /// The script of `c` for itemisation: `None` for characters that take the script of the text
 /// around them (spaces, punctuation, digits, combining marks, joiners).
 fn real_script(c: char) -> Option<Script> {

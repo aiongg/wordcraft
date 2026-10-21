@@ -11,7 +11,6 @@ pub mod color;
 mod fontdb;
 pub mod math;
 mod script;
-mod ui_fallback;
 pub mod word;
 
 pub use fontdb::{
@@ -21,76 +20,23 @@ pub use fontdb::{
 pub use harfrust::Feature;
 use harfrust::{Direction, ShapeOptions, Tag, UnicodeBuffer};
 pub use kurbo::BezPath;
-pub use script::{fallback_rank, needs_layout_tables, script_fallbacks};
+pub use script::{fallback_rank, is_cjk, needs_layout_tables, script_fallbacks};
 use skrifa::MetadataProvider;
 use skrifa::instance::Size;
-pub use ui_fallback::{SystemUiFont, is_cjk, system_cjk_ui_font, system_cjk_ui_font_for, ui_needs_system_cjk, ui_uncovered_cjk};
 
-/// A font from the optional craft-fonts build input (https://github.com/storytold/craft-fonts;
+pub use craft_fonts_build::EmbeddedFace;
+
+/// The document faces from the optional craft-fonts build input (https://github.com/storytold/craft-fonts;
 /// empty unless built with `CRAFT_FONTS_DIR`, see `build.rs`).
-pub struct CraftFont {
-    pub family: &'static str,
-    pub style: &'static str,
-    /// ISO 15924 scripts the font is for, e.g. `"Jpan"`.
-    pub scripts: &'static [&'static str],
-    pub bytes: &'static [u8],
-}
+pub static CRAFT_FONTS: &[EmbeddedFace] = include!(concat!(env!("OUT_DIR"), "/craft_fonts.rs"));
 
-include!(concat!(env!("OUT_DIR"), "/craft_fonts.rs"));
-
-/// The craft-fonts faces for Japanese (`"Jpan"`), in manifest order. Empty without craft-fonts.
-pub fn japanese_fonts() -> impl Iterator<Item = &'static CraftFont> {
-    CRAFT_FONTS.iter().filter(|f| f.scripts.contains(&"Jpan"))
-}
-
-/// Japanese faces in document-fallback order: Mincho (serif) families first, matching the
-/// serif default text font, then the others; Regular before other styles.
-pub fn japanese_document_fonts() -> Vec<&'static CraftFont> {
-    let mut v: Vec<_> = japanese_fonts().collect();
+/// The craft-fonts faces for Japanese (`"Jpan"`) in document-fallback order: Mincho (serif)
+/// families first, matching the serif default text font, then the others; Regular before other
+/// styles. Empty without craft-fonts.
+pub fn japanese_document_fonts() -> Vec<&'static EmbeddedFace> {
+    let mut v: Vec<_> = CRAFT_FONTS.iter().filter(|f| f.has_script("Jpan")).collect();
     v.sort_by_key(|f| (!f.family.contains("Mincho"), f.style != "Regular"));
     v
-}
-
-/// Japanese faces in UI order: BIZ UDPGothic first (the UI face), then the others; `bold` puts
-/// bold styles before regular ones.
-pub fn japanese_ui_fonts(bold: bool) -> Vec<&'static CraftFont> {
-    let mut v: Vec<_> = japanese_fonts().collect();
-    v.sort_by_key(|f| (f.family != "BIZ UDPGothic", (f.style == "Bold") != bold));
-    v
-}
-
-/// The craft-fonts faces for Simplified Chinese (`"Hans"`), in manifest order. Empty without
-/// craft-fonts.
-pub fn chinese_fonts() -> impl Iterator<Item = &'static CraftFont> {
-    CRAFT_FONTS.iter().filter(|f| f.scripts.contains(&"Hans"))
-}
-
-/// The craft-fonts faces for Korean (`"Kore"`), in manifest order. Empty without craft-fonts.
-pub fn korean_fonts() -> impl Iterator<Item = &'static CraftFont> {
-    CRAFT_FONTS.iter().filter(|f| f.scripts.contains(&"Kore"))
-}
-
-/// The CJK interface faces, Regular styles only (the UI fakes no bold), with the Japanese UI,
-/// Chinese, and Korean faces ordered for the selected interface language. Mixing the faces within
-/// a line would mix glyph styles, so the first face should cover the interface language. Empty
-/// without craft-fonts.
-pub fn ui_cjk_fonts(prefer_hans: bool) -> Vec<&'static CraftFont> {
-    ui_cjk_fonts_for(prefer_hans, false)
-}
-
-/// The CJK interface faces in the preferred writing system's order.
-pub fn ui_cjk_fonts_for(prefer_hans: bool, prefer_korean: bool) -> Vec<&'static CraftFont> {
-    let regular = |f: &&CraftFont| f.style == "Regular";
-    let ja = japanese_ui_fonts(false).into_iter().filter(regular).take(1);
-    let zh = chinese_fonts().filter(regular).take(1);
-    let ko = korean_fonts().filter(regular).take(1);
-    if prefer_korean {
-        ko.chain(ja).chain(zh).collect()
-    } else if prefer_hans {
-        zh.chain(ja).chain(ko).collect()
-    } else {
-        ja.chain(zh).chain(ko).collect()
-    }
 }
 
 /// The bundled serif used when a document asks for nothing better.
@@ -355,8 +301,6 @@ mod tests {
         let fonts = japanese_document_fonts();
         assert!(!fonts.is_empty(), "craft-fonts has Japanese fonts");
         assert!(fonts[0].family.contains("Mincho"), "documents fall back to a Mincho first");
-        assert_eq!(japanese_ui_fonts(false)[0].family, "BIZ UDPGothic");
-        assert_eq!(japanese_ui_fonts(true)[0].style, "Bold");
         let db = FontDb::with_font_dirs(Vec::new());
         db.set_system_fallback(false);
         for cf in fonts {
@@ -426,7 +370,7 @@ mod tests {
         assert_eq!(db.face(DEFAULT_FAMILY, "Regular").family, DEFAULT_FAMILY);
         assert!(!shape(&db.face(DEFAULT_FAMILY, "Regular"), "Hello", &[], |c| c).is_empty());
         if CRAFT_FONTS.is_empty() {
-            assert!(japanese_fonts().next().is_none() && japanese_document_fonts().is_empty());
+            assert!(japanese_document_fonts().is_empty());
             let latin = db.face(DEFAULT_FAMILY, "Regular");
             assert!(db.fallback_for('語', latin.id()).is_none(), "no bundled Japanese font");
         }

@@ -660,6 +660,11 @@ pub(crate) fn legacy_family(family: &str, style: &str) -> String {
     if extra.is_empty() { family.to_string() } else { format!("{family} {}", extra.join(" ")) }
 }
 
+/// The tables skrifa reads glyph outlines from: TrueType, CFF, CFF2 and VARC. A face with
+/// outlines only in Apple's `hvgl` table has none of them, and the interface draws its characters
+/// as blank space.
+pub(crate) const OUTLINE_TABLES: [&[u8; 4]; 4] = [b"glyf", b"CFF ", b"CFF2", b"VARC"];
+
 /// The color bitmap tables the renderer draws glyphs from ([`FontFace::color_glyph`]).
 #[cfg(not(target_arch = "wasm32"))]
 const COLOR_BITMAP_TABLES: [&[u8; 4]; 2] = [b"sbix", b"CBDT"];
@@ -667,11 +672,10 @@ const COLOR_BITMAP_TABLES: [&[u8; 4]; 2] = [b"sbix", b"CBDT"];
 /// The names of every face in the font file at `path`, reading only its table directories and
 /// `name` and `fvar` tables: a scan opens hundreds of font files, many of them megabytes long
 /// (CJK collections run to 20 MB and more). A variable font yields one entry per named instance,
-/// as it does loaded. Faces with none of the [`OUTLINE_TABLES`](crate::ui_fallback::OUTLINE_TABLES)
+/// as it does loaded. Faces with none of the [`OUTLINE_TABLES`]
 /// and [`COLOR_BITMAP_TABLES`] are left out.
 #[cfg(not(target_arch = "wasm32"))]
 fn file_face_names(path: &std::path::Path) -> Vec<Found> {
-    use crate::ui_fallback::OUTLINE_TABLES;
     use std::io::{Read, Seek, SeekFrom};
     /// Caps on what a (possibly damaged) file can make the scan read.
     const MAX_FACES: u32 = 256;
@@ -1886,11 +1890,14 @@ mod tests {
         }
         // A Thai font with OpenType tables, as the per-character fallback prefers.
         assert!(f.has_layout_tables(), "{} shapes Thai", f.family);
-        // Without system fonts no bundled face covers Thai: the caller keeps the per-character path.
-        let bundled = FontDb::with_font_dirs(Vec::new());
-        bundled.set_system_fallback(false);
-        let latin = bundled.face(FALLBACK_FAMILY, "Regular");
-        assert!(bundled.fallback_for_run(&chars, latin.id(), false, false).is_none());
+        // Without system fonts and craft-fonts' Thai face no bundled face covers Thai: the caller
+        // keeps the per-character path.
+        if !crate::CRAFT_FONTS.iter().any(|f| f.has_script("Thai")) {
+            let bundled = FontDb::with_font_dirs(Vec::new());
+            bundled.set_system_fallback(false);
+            let latin = bundled.face(FALLBACK_FAMILY, "Regular");
+            assert!(bundled.fallback_for_run(&chars, latin.id(), false, false).is_none());
+        }
     }
 
     #[test]

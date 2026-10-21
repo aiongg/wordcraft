@@ -1176,6 +1176,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     if app.canvas.wheel.is_animating() {
         ui.ctx().request_repaint();
     }
+    // The canvas owns its offset (its wheel handling and the scroll requests above, clamped to
+    // the content). egui checks an offset against the previous frame's content size, so after a
+    // zoom a valid offset looks like overscroll that a rubber band would spring back from.
+    ui_area.spacing_mut().scroll.kinetic.rubber_band = false;
     let out = scroll_area.show_viewport(&mut ui_area, |ui, viewport| {
         origin = ui.min_rect().min - viewport.min.to_vec2();
         let content = Rect::from_min_size(ui.min_rect().min, geo.size);
@@ -1183,7 +1187,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         // chrome changes, and a new id dropped the keyboard focus, so the arrows, Page Up/Down
         // and Escape did nothing in Read Mode until the reader clicked a page (#1772).
         ui.advance_cursor_after_rect(content);
-        let resp = ui.interact(content, egui::Id::new("wordcraft_canvas"), Sense::click_and_drag());
+        let resp = ui.interact(content, egui::Id::unique("wordcraft_canvas"), Sense::click_and_drag());
         if let Some(tr) = scroll_target {
             ui.scroll_to_rect(Rect::from_min_size(ui.min_rect().min + tr.min.to_vec2(), tr.size()), None);
         }
@@ -1400,7 +1404,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         if floating_comments(app) {
             // Its own layer, so presses on the card never reach the canvas under it.
             let ctx = ui.ctx().clone();
-            egui::Area::new(egui::Id::new("floating_comment")).order(egui::Order::Foreground).fixed_pos(Pos2::ZERO).sense(Sense::hover()).show(
+            egui::Area::new(egui::Id::unique("floating_comment")).order(egui::Order::Foreground).fixed_pos(Pos2::ZERO).sense(Sense::hover()).show(
                 &ctx,
                 |aui| {
                     aui.set_clip_rect(view_rect);
@@ -1562,13 +1566,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 );
                 if !new.is_empty() {
                     app.canvas.ime_faces.extend(new);
-                    crate::theme::install_fonts_language_extra(
-                        ui.ctx(),
-                        app.fonts_hans,
-                        app.fonts_korean,
-                        app.fonts_system_cjk,
-                        &app.canvas.ime_faces,
-                    );
+                    crate::theme::install_fonts_language(ui.ctx(), app.fonts_language, &app.canvas.ime_faces);
                     ui.ctx().request_repaint();
                 }
                 let caret_color = caret_color(app);
@@ -1584,7 +1582,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         crate::table_mouse::paint(app, &painter, &t, &layout, &rects, geo.scale);
         (resp, rects)
     });
-    app.canvas.scroll_offset = out.state.offset;
+    app.canvas.scroll_offset = out.state.clamped_offset();
     scrollbar_page_tip(app, ui, out.id, &geo.rects, &geo.bands, layout.pages.len());
     crate::ink::replay_bar(app, ui, out.inner_rect);
     app.canvas.scroll_max = (out.content_size - out.inner_rect.size()).max(egui::Vec2::ZERO);
@@ -1608,17 +1606,21 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         deselect_balloon(app);
     }
     // Space and Enter also set `Response::clicked` on a focused click-sensing widget
-    // (egui's fake primary click). `request_focus` always interrupts IME; on X11 that
-    // destroys the XIM context and fcitx then drops every later key (#1169). A pointer
-    // click, an accessibility click, or a drag still takes focus, including a click on
-    // a canvas that already has it, so a composition commits. `want_focus` focuses only
-    // while the canvas does not, and does not interrupt an editor that already has it.
+    // (egui's fake primary click). Interrupting IME on X11 destroys the XIM context and
+    // fcitx then drops every later key (#1169). A pointer click, an accessibility click, or
+    // a drag takes focus and interrupts the composition, also on a canvas that already has
+    // focus (where `request_focus` alone leaves IME alone), so a composition commits.
+    // `want_focus` focuses only while the canvas does not, and does not interrupt an editor
+    // that already has it.
     let keyboard_click = ui.memory(|m| m.has_focus(resp.id)) && ui.input(|i| i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::Enter));
     let pointer_click = resp.clicked_by(egui::PointerButton::Primary);
     let accesskit_click = resp.clicked() && !pointer_click && !keyboard_click;
     let focus_click = pointer_click || accesskit_click || resp.drag_started();
     if focus_click || (app.canvas.want_focus && !resp.has_focus()) {
         resp.request_focus();
+    }
+    if focus_click {
+        ui.memory_mut(|m| m.interrupt_ime());
     }
     if focus_click || app.canvas.want_focus {
         app.canvas.want_focus = false;
@@ -1967,7 +1969,7 @@ fn balloons(app: &mut WordApp, ui: &mut Ui, painter: &egui::Painter, rects: &[Re
                     painter.galley(pos2(card.min.x + 10.0, y), g, t.text);
                     y += h;
                 }
-                let r = ui.interact(card, ui.id().with(("balloon", *id)), Sense::click());
+                let r = ui.interact(card, ui.scope_id().with(("balloon", *id)), Sense::click());
                 if r.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
@@ -2125,7 +2127,7 @@ fn active_balloon(app: &mut WordApp, ui: &mut Ui, painter: &egui::Painter, id: u
     let t = Tokens::get(ui.ctx());
     let slot = painter.add(egui::Shape::Noop);
     // The card's own click area sits under its fields, so a click on its padding stays here.
-    let _ = ui.interact(card, ui.id().with(("balloon", id)), Sense::click());
+    let _ = ui.interact(card, ui.scope_id().with(("balloon", id)), Sense::click());
     let inner = Rect::from_min_max(pos2(card.min.x + 10.0, card.min.y + 6.0), pos2(card.max.x - 6.0, card.min.y + 20_000.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
     child.spacing_mut().item_spacing.y = 3.0;
@@ -2247,7 +2249,7 @@ fn scrollbar_page_tip(app: &mut WordApp, ui: &Ui, scroll: egui::Id, rects: &[Rec
         (dragged && !rects.is_empty() && pages > 0).then(|| top_page(rects, bands, app.canvas.scroll_offset.y).min(pages - 1));
     let (Some(page), Some(at)) = (app.canvas.scrollbar_page, ui.ctx().pointer_latest_pos()) else { return };
     let text = crate::i18n::fmt(tl!("Page {page} of {pages}"), &[("page", &(page + 1).to_string()), ("pages", &pages.to_string())]);
-    egui::Area::new(egui::Id::new("scrollbar_page_tip"))
+    egui::Area::new(egui::Id::unique("scrollbar_page_tip"))
         .order(egui::Order::Tooltip)
         .interactable(false)
         .pivot(egui::Align2::RIGHT_CENTER)
@@ -2591,7 +2593,7 @@ fn mouse(app: &mut WordApp, ui: &Ui, resp: &egui::Response, rects: &[Rect], layo
         let key = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" };
         let target = if is_generated_bookmark_link(&link) { tl!("Current Document").to_string() } else { link };
         let tip = format!("{target}\n{}", crate::i18n::fmt(tl!("{key}+Click to follow link"), &[("key", key)]));
-        egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), egui::Id::new("link_tip"), egui::PopupAnchor::Pointer).show(|ui| {
+        egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), egui::Id::unique("link_tip"), egui::PopupAnchor::Pointer).show(|ui| {
             ui.label(tip);
         });
     }
@@ -2697,7 +2699,7 @@ fn rulers(app: &mut WordApp, ui: &mut Ui, h: Rect, v: Rect, rects: &[Rect], layo
         // which keep the pointer where they overlap.
         crate::table_ruler::columns(app, ui, layout, pi, bar, x0, scale);
         // Dragging the left-indent marker.
-        let id = ui.id().with("ruler_left");
+        let id = ui.scope_id().with("ruler_left");
         let mr = Rect::from_center_size(pos2(left, bar.max.y - 3.0), vec2(12.0, 12.0));
         let r = ui.interact(mr, id, Sense::click_and_drag());
         if r.dragged()
@@ -2711,7 +2713,7 @@ fn rulers(app: &mut WordApp, ui: &mut Ui, h: Rect, v: Rect, rects: &[Rect], layo
             let _ = app.run("para.indents", json!({"left": snapped}));
         }
         let fr = Rect::from_center_size(pos2(first, bar.min.y + 3.0), vec2(12.0, 10.0));
-        let r = ui.interact(fr, ui.id().with("ruler_first"), Sense::click_and_drag());
+        let r = ui.interact(fr, ui.scope_id().with("ruler_first"), Sense::click_and_drag());
         if r.dragged()
             && let Some(pp) = r.interact_pointer_pos()
         {
@@ -2722,7 +2724,7 @@ fn rulers(app: &mut WordApp, ui: &mut Ui, h: Rect, v: Rect, rects: &[Rect], layo
             let _ = app.run("para.indents", json!({"firstLine": (pt / 4.5).round() * 4.5}));
         }
         let rr = Rect::from_center_size(pos2(right, bar.max.y - 3.0), vec2(12.0, 12.0));
-        let r = ui.interact(rr, ui.id().with("ruler_right"), Sense::click_and_drag());
+        let r = ui.interact(rr, ui.scope_id().with("ruler_right"), Sense::click_and_drag());
         if r.dragged()
             && let Some(pp) = r.interact_pointer_pos()
         {
@@ -2970,7 +2972,7 @@ fn margin_handle(
 ) {
     let cursor =
         if matches!(edge, MarginEdge::Left | MarginEdge::Right) { egui::CursorIcon::ResizeHorizontal } else { egui::CursorIcon::ResizeVertical };
-    let r = ui.interact(zone, ui.id().with(("ruler_margin", edge)), Sense::drag()).on_hover_cursor(cursor);
+    let r = ui.interact(zone, ui.scope_id().with(("ruler_margin", edge)), Sense::drag()).on_hover_cursor(cursor);
     let r = if r.dragged() { r } else { r.on_hover_text(tl!(edge.label())) };
     if r.dragged()
         && let Some(pp) = r.interact_pointer_pos()
@@ -3581,7 +3583,13 @@ mod tests {
 
     #[test]
     fn reading_wheel_snaps_one_column_per_tick_and_respects_touchpads() {
-        let ev = |unit, y| egui::Event::MouseWheel { unit, delta: vec2(0.0, y), phase: egui::TouchPhase::Move, modifiers: egui::Modifiers::NONE };
+        let ev = |unit, y| egui::Event::MouseWheel {
+            unit,
+            delta: vec2(0.0, y),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
+            modifiers: egui::Modifiers::NONE,
+        };
         let mut partial = 0.0;
         for _ in 0..6 {
             assert_eq!(read_wheel_turns(&[ev(egui::MouseWheelUnit::Point, -65.0)], true, &mut partial), 1);
@@ -4153,9 +4161,7 @@ mod tests {
     fn balloon_glyphs(text: &str, width: f32) -> Option<Vec<(char, f32)>> {
         let face = wordcraft_fonts::FontDb::global().fallback_for('ش', u32::MAX)?;
         let ctx = egui::Context::default();
-        let mut fonts = crate::theme::font_definitions(false, false);
-        crate::theme::add_fallback_faces(&mut fonts, &[face]);
-        ctx.set_fonts(fonts);
+        ctx.set_fonts(crate::theme::font_stack("en", &[face]).flat_definitions());
         ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
         let mut out = Vec::new();
         ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -6024,9 +6030,8 @@ mod tests {
         let _ = collapse_white_space(&[], &[], 1.0, 1.0);
     }
 
-    /// #1169: Space and Enter count as `Response::clicked` on the focused canvas, and
-    /// `request_focus` always interrupts IME. On X11 that recreates the XIM context and
-    /// fcitx drops every later key. Those keys still type, and they must not set
+    /// #1169: Space and Enter count as `Response::clicked` on the focused canvas.
+    /// Interrupting IME on X11 recreates the XIM context and fcitx drops every later key. Those keys still type, and they must not set
     /// `should_interrupt_composition`. A real pointer click still does, so a composition
     /// commits when the caret moves.
     #[test]
