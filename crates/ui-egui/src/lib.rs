@@ -2065,6 +2065,7 @@ impl WordApp {
     fn install_ui_fonts(&mut self, ctx: &egui::Context, lang: i18n::Lang) {
         if !self.styled || lang.code() != self.fonts_language {
             theme::install_fonts_language(ctx, lang.code(), &self.canvas.ime_faces);
+            craft_ui::direction::apply(ctx, craft_ui::direction::resolve(lang.code(), craft_ui::direction::Setting::Language));
             self.fonts_language = lang.code();
             // Mod with -, = and 0 are Word shortcuts (optional hyphen, subscript, paragraph spacing);
             // egui's keyboard zoom would also scale the whole window on them. Zoom is View › Zoom.

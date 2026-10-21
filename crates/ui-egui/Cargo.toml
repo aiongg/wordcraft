@@ -12,7 +12,6 @@ workspace = true
 craft-ui = { git = "https://github.com/aiongg/craft-libs", rev = "0554adc" }
 wordcraft-geom = { workspace = true }
 wordcraft-doc = { workspace = true }
-unicode-bidi = { workspace = true }
 wordcraft-fonts = { workspace = true }
 wordcraft-layout = { workspace = true }
 wordcraft-render = { workspace = true }

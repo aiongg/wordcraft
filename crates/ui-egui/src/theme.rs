@@ -937,4 +937,25 @@ mod tests {
         });
         assert!(missing.is_empty(), "symbols without a glyph: {missing:#?}");
     }
+
+    /// Characters no catalog has draw in a text field without panicking: a rare Han character, a
+    /// Vietnamese letter and ⌘. ẫ and ⌘ come from the bundled interface faces, so they never draw
+    /// as tofu; the Han character draws from an installed font that has it, and as tofu without one.
+    #[test]
+    fn text_fields_draw_characters_outside_the_catalogs() {
+        const HAN: char = '𠀋';
+        let id = egui::FontId::proportional(13.0);
+        let stack = super::font_stack("en", &[]);
+        assert!(stack.fonts(false).has_glyphs(&id, "ẫ⌘"), "the bundled faces draw ẫ and ⌘");
+        let han_installed = stack.fonts(true).has_glyph(&id, HAN);
+        for (text, tofu) in [("ẫ ⌘", false), ("𠀋 ẫ ⌘", !han_installed)] {
+            let mut field = text.to_owned();
+            let builder = super::harness();
+            let builder = if tofu { builder.allow_missing_glyphs() } else { builder };
+            let mut h = builder.build_ui(move |ui| {
+                ui.add(egui::TextEdit::singleline(&mut field)).accessible_name("Sample");
+            });
+            h.run_steps(3);
+        }
+    }
 }

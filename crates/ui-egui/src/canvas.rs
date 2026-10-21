@@ -1922,21 +1922,21 @@ fn balloons(app: &mut WordApp, ui: &mut Ui, painter: &egui::Painter, rects: &[Re
             let top = (anchor.y + if over_page { 4.0 } else { -12.0 }).max(next_y);
             let active = app.canvas.balloon == Some(*id);
             // Lay out a read-only balloon's text: the comment, then each reply under a rule.
-            let mut lines: Vec<(std::sync::Arc<egui::Galley>, f32)> = Vec::new();
+            let mut lines: Vec<(Vec<(std::sync::Arc<egui::Galley>, f32)>, f32)> = Vec::new();
             let card = if active {
                 Rect::from_min_size(pos2(x0, top), vec2(w, app.canvas.balloon_h.max(24.0)))
             } else {
                 let dim = |r: bool| if r { t.text_dim } else { t.text };
-                lines.push((balloon_text(painter, author, semibold(fs), t.text, w - 16.0), 0.0));
+                lines.push((balloon_text(painter, &author, &semibold(fs), t.text, w - 16.0), 0.0));
                 let body = app.session.doc.plain_text(StoryRef::Part(c.part));
-                lines.push((balloon_text(painter, body.trim().to_string(), regular(fs), dim(resolved), w - 16.0), 4.0));
+                lines.push((balloon_text(painter, body.trim(), &regular(fs), dim(resolved), w - 16.0), 4.0));
                 for rid in &thread {
                     let Some(r) = app.session.doc.comments.get(rid) else { continue };
-                    lines.push((balloon_text(painter, author_name(&r.author), semibold(fs), t.text, w - 16.0), 9.0));
+                    lines.push((balloon_text(painter, &author_name(&r.author), &semibold(fs), t.text, w - 16.0), 9.0));
                     let text = app.session.doc.plain_text(StoryRef::Part(r.part));
-                    lines.push((balloon_text(painter, text.trim().to_string(), regular(fs), dim(resolved), w - 16.0), 4.0));
+                    lines.push((balloon_text(painter, text.trim(), &regular(fs), dim(resolved), w - 16.0), 4.0));
                 }
-                let h = lines.iter().map(|(g, gap)| g.size().y + gap).sum::<f32>() + 12.0;
+                let h = lines.iter().flat_map(|(paras, gap)| paras.iter().map(|(g, _)| g.size().y).chain([*gap])).sum::<f32>() + 12.0;
                 Rect::from_min_size(pos2(x0, top), vec2(w, h))
             };
             if !card.intersects(clip) {
@@ -1959,15 +1959,17 @@ fn balloons(app: &mut WordApp, ui: &mut Ui, painter: &egui::Painter, rects: &[Re
             } else {
                 card_shapes(painter, &t, card, color, selected, None);
                 let mut y = card.min.y + 6.0;
-                for (i, (g, gap)) in lines.into_iter().enumerate() {
+                for (i, (paras, gap)) in lines.into_iter().enumerate() {
                     y += gap;
                     if i >= 2 && i % 2 == 0 {
                         // A reply starts: a hairline between it and what it answers.
                         painter.hline(card.min.x + 10.0..=card.max.x - 8.0, y - gap / 2.0, Stroke::new(1.0, t.border));
                     }
-                    let h = g.size().y;
-                    painter.galley(pos2(card.min.x + 10.0, y), g, t.text);
-                    y += h;
+                    for (g, x) in paras {
+                        let h = g.size().y;
+                        painter.galley(pos2(card.min.x + 10.0 + x, y), g, t.text);
+                        y += h;
+                    }
                 }
                 let r = ui.interact(card, ui.scope_id().with(("balloon", *id)), Sense::click());
                 if r.hovered() {
@@ -2017,106 +2019,18 @@ fn card_shapes(painter: &egui::Painter, t: &Tokens, card: Rect, color: Color32, 
     }
 }
 
-/// Does `text` hold right-to-left letters (Arabic, Hebrew, Syriac, Thaana, N'Ko …)?
-fn has_rtl(text: &str) -> bool {
-    text.chars().any(|c| matches!(unicode_bidi::bidi_class(c), unicode_bidi::BidiClass::R | unicode_bidi::BidiClass::AL))
-}
-
-/// The row `line` of paragraph `p` of `para` in display order, for egui: the bidi runs left to
-/// right as they are shown, and inside a right-to-left run its words reversed. The letters of each
-/// word stay in logical order, because egui's shaper already runs an Arabic word right to left.
-fn visual_row(info: &unicode_bidi::BidiInfo, p: &unicode_bidi::ParagraphInfo, para: &str, line: std::ops::Range<usize>) -> String {
-    // `visual_runs` indexes the line's first byte: an empty line (an empty last row) would panic.
-    if line.start >= line.end || line.end > p.range.end {
-        return String::new();
-    }
-    let (levels, runs) = info.visual_runs(p, line);
-    let mut out = String::new();
-    for run in runs {
-        let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
-        // Runs lie on character boundaries; a missing slice is skipped, never a panic.
-        let Some(piece) = para.get(run) else { continue };
-        if rtl {
-            let mut words: Vec<&str> = piece.split_inclusive(char::is_whitespace).collect();
-            words.reverse();
-            for w in words {
-                // The space that followed a word now goes before it.
-                let word = w.trim_end_matches(char::is_whitespace);
-                out.push_str(w.get(word.len()..).unwrap_or_default());
-                out.extend(word.chars().map(mirrored));
-            }
-        } else {
-            out.push_str(piece);
-        }
-    }
-    out
-}
-
-/// `c` as drawn in a right-to-left run: brackets face the other way (Unicode's Bidi_Mirrored
-/// pairs that interface text uses), since egui draws the character it is given.
-fn mirrored(c: char) -> char {
-    match c {
-        '(' => ')',
-        ')' => '(',
-        '[' => ']',
-        ']' => '[',
-        '{' => '}',
-        '}' => '{',
-        '<' => '>',
-        '>' => '<',
-        '«' => '»',
-        '»' => '«',
-        '‹' => '›',
-        '›' => '‹',
-        _ => c,
-    }
-}
-
-/// A read-only balloon's text, wrapped to `width`. egui joins Arabic letters but places them left
-/// to right, so a right-to-left comment read its words backwards. Each wrapped row is put into
-/// display order (Unicode bidi, per paragraph) and a right-to-left paragraph's rows are set against
-/// the right edge. Text without right-to-left letters is laid out exactly as before.
-fn balloon_text(painter: &egui::Painter, text: String, font: egui::FontId, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
-    if !has_rtl(&text) {
-        return painter.layout(text, font, color, width);
-    }
-    let format = egui::TextFormat::simple(font.clone(), color);
-    let mut job = egui::text::LayoutJob::default();
-    let mut rows: Vec<(String, bool)> = Vec::new();
-    for para in text.split('\n') {
-        let info = unicode_bidi::BidiInfo::new(para, None);
-        if info.paragraphs.is_empty() {
-            rows.push((String::new(), false));
-        }
-        for p in &info.paragraphs {
-            let rtl = p.level.is_rtl();
-            // Wrap in logical order at spaces, by the words' widths (the order doesn't change a word's
-            // width), then put each row in display order. egui's own rows can't be used: it draws a
-            // lam-alef pair as one glyph, so its glyph count isn't the character count.
-            let mut start = p.range.start;
-            let mut end = start;
-            let mut used = 0.0;
-            for word in para.get(p.range.clone()).unwrap_or_default().split_inclusive(char::is_whitespace) {
-                let w = painter.layout_no_wrap(word.trim_end().to_string(), font.clone(), color).size().x;
-                let gap = painter.layout_no_wrap(word.get(word.trim_end().len()..).unwrap_or_default().to_string(), font.clone(), color).size().x;
-                if end > start && used + w > width {
-                    rows.push((visual_row(&info, p, para, start..end).trim().to_string(), rtl));
-                    start = end;
-                    used = 0.0;
-                }
-                used += w + gap;
-                end += word.len();
-            }
-            rows.push((visual_row(&info, p, para, start..end).trim().to_string(), rtl));
-        }
-    }
-    let last = rows.len().saturating_sub(1);
-    for (i, (row, rtl)) in rows.into_iter().enumerate() {
-        let lead = if rtl { (width - painter.layout_no_wrap(row.clone(), font.clone(), color).size().x).max(0.0) } else { 0.0 };
-        let row = if i < last { row + "\n" } else { row };
-        job.append(&row, lead, format.clone());
-    }
-    painter.layout_job(job)
+/// A read-only balloon's text wrapped to `width`: each paragraph's galley and its x in the text
+/// column. egui lays a paragraph out in reading order and sets a right-to-left one's rows flush
+/// with its widest row; the x puts that row against the column's right edge.
+fn balloon_text(painter: &egui::Painter, text: &str, font: &egui::FontId, color: Color32, width: f32) -> Vec<(std::sync::Arc<egui::Galley>, f32)> {
+    text.split('\n')
+        .map(|para| {
+            let g = painter.layout(para.to_string(), font.clone(), color, width);
+            let rtl = g.rows.first().is_some_and(|r| r.row.rtl_paragraph);
+            let x = if rtl { (width - g.size().x).max(0.0) } else { 0.0 };
+            (g, x)
+        })
+        .collect()
 }
 
 /// The selected balloon: the comment and its replies as editable fields (each edit is one undo
@@ -4154,71 +4068,56 @@ mod tests {
         assert!(painted.is_some_and(|l| std::sync::Arc::ptr_eq(&l, &latest)), "the frame painted the layout with the typed character");
     }
 
-    /// #167: a comment balloon edits in place like Word's: click it, type, leave it, and the
-    /// comment has the new text as one undo step.
     /// Lays `text` out as a read-only balloon does, with a document face that covers Arabic, and
-    /// returns each glyph's character and left edge.
-    fn balloon_glyphs(text: &str, width: f32) -> Option<Vec<(char, f32)>> {
+    /// returns each row's glyphs (character, left and right edge) in the text column.
+    fn balloon_rows(text: &str, width: f32) -> Option<Vec<Vec<(char, f32, f32)>>> {
         let face = wordcraft_fonts::FontDb::global().fallback_for('ش', u32::MAX)?;
         let ctx = egui::Context::default();
         ctx.set_fonts(crate::theme::font_stack("en", &[face]).flat_definitions());
         ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
         let mut out = Vec::new();
         ctx.run_ui(egui::RawInput::default(), |ui| {
-            let g = balloon_text(ui.painter(), text.to_string(), egui::FontId::proportional(14.0), Color32::BLACK, width);
-            for r in &g.rows {
-                out.extend(r.row.glyphs.iter().map(|gl| (gl.chr, r.pos.x + gl.pos.x)));
+            for (g, x) in balloon_text(ui.painter(), text, &egui::FontId::proportional(14.0), Color32::BLACK, width) {
+                for r in &g.rows {
+                    let at = x + r.pos.x;
+                    out.push(r.row.glyphs.iter().map(|gl| (gl.chr, at + gl.pos.x, at + gl.max_x())).collect());
+                }
             }
         })
         .drop_without_applying_deltas();
         Some(out)
     }
 
-    /// Where egui draws a right-to-left balloon's words, measured: the first word on the right.
+    /// A right-to-left comment reads from the right, each row against the balloon's right edge,
+    /// and a left-to-right paragraph in the same comment stays on the left.
     #[test]
     fn a_right_to_left_balloon_reads_from_the_right() {
-        let x = |g: &[(char, f32)], c: char| g.iter().find(|(ch, _)| *ch == c).map(|(_, x)| *x).unwrap();
-        let Some(g) = balloon_glyphs("شركة اي", 400.0) else { return };
+        let x = |rows: &[Vec<(char, f32, f32)>], c: char| rows.iter().flatten().find(|g| g.0 == c).map(|g| g.1).unwrap();
+        let right = |row: &[(char, f32, f32)]| row.iter().map(|g| g.2).fold(0.0, f32::max);
+        let Some(g) = balloon_rows("شركة اي", 400.0) else { return };
         assert!(x(&g, 'ش') > x(&g, 'ي'), "the first word is right of the second: {g:?}");
-        assert!(x(&g, 'ش') > 300.0, "the line is set against the right edge: {g:?}");
-        // A Latin word inside keeps its letters left to right; its brackets face it.
-        let g = balloon_glyphs("الربط (APIs) هنا", 400.0).unwrap();
+        assert!((right(&g[0]) - 400.0).abs() < 1.0, "the row ends at the right edge: {g:?}");
+        // A Latin word inside keeps its letters left to right, between the Arabic words on either side.
+        let g = balloon_rows("الربط (APIs) هنا", 400.0).unwrap();
         assert!(x(&g, 'A') < x(&g, 's'));
         assert!(x(&g, 'ط') > x(&g, 'A') && x(&g, 'A') > x(&g, 'ه'), "{g:?}");
-        // The opening bracket, on the right in Arabic, is drawn mirrored: `(APIs)` on screen.
-        assert!(x(&g, '(') < x(&g, 'A') && x(&g, ')') > x(&g, 's'), "brackets face the word: {g:?}");
-        // A paragraph that starts in Latin runs left to right.
-        let g = balloon_glyphs("@Ahmed برجاء مراجعة", 400.0).unwrap();
-        assert!(x(&g, '@') < x(&g, 'ب') && x(&g, '@') < 50.0, "{g:?}");
+        assert!(x(&g, '(') > x(&g, 's') && x(&g, ')') < x(&g, 'A'), "the brackets enclose the word: {g:?}");
+        // A paragraph that starts in Latin runs left to right from the left edge.
+        let g = balloon_rows("@Ahmed برجاء مراجعة\nشركة اي", 400.0).unwrap();
+        assert!(x(&g, '@') < 1.0, "{g:?}");
         assert!(x(&g, 'ب') > x(&g, 'م'), "the Arabic words still read from the right: {g:?}");
-        // Wrapped rows stay inside the width.
+        assert!((right(&g[1]) - 400.0).abs() < 1.0, "the next, Arabic paragraph is on the right: {g:?}");
+        // Every wrapped row ends at the right edge, the widest as well as the last.
         let long = "بيان الأنظمة المطلوب ربطها ومتطلبات التكامل وواجهات الربط البرمجي وآلية تبادل البيانات";
-        let g = balloon_glyphs(long, 200.0).unwrap();
-        assert!(g.iter().all(|(_, x)| *x <= 200.0), "{g:?}");
+        let g = balloon_rows(long, 200.0).unwrap();
+        assert!(g.len() > 2, "{g:?}");
+        for row in g.iter().filter(|r| !r.iter().all(|c| c.0.is_whitespace())) {
+            assert!((right(row) - 200.0).abs() < 1.0, "{row:?}");
+        }
     }
 
-    #[test]
-    fn balloon_rows_put_right_to_left_words_in_display_order() {
-        let row = |text: &str| {
-            let info = unicode_bidi::BidiInfo::new(text, None);
-            let p = info.paragraphs.first().unwrap();
-            visual_row(&info, p, text, p.range.clone())
-        };
-        // Words swap, each word's letters stay as they are (egui shapes the word).
-        assert_eq!(row("شركة اي للكهرباء"), "للكهرباء اي شركة");
-        // A Latin name and a number inside Arabic keep their own order.
-        assert_eq!(row("يجب ربط Odoo 19 هنا"), "هنا Odoo 19 ربط يجب");
-        assert_eq!(row("Should include Meters system API"), "Should include Meters system API");
-        assert!(!has_rtl("Should include Meters system API"));
-        assert!(has_rtl("נא לבדוק"));
-        // An empty row at the end of the text (egui's last row after a wrap) is empty, not a panic.
-        let text = "شركة اي";
-        let info = unicode_bidi::BidiInfo::new(text, None);
-        let p = info.paragraphs.first().unwrap();
-        assert_eq!(visual_row(&info, p, text, text.len()..text.len()), "");
-        assert_eq!(visual_row(&info, p, text, 0..text.len() + 5), "");
-    }
-
+    /// #167: a comment balloon edits in place like Word's: click it, type, leave it, and the
+    /// comment has the new text as one undo step.
     #[test]
     fn a_balloon_edits_its_comment() {
         let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
