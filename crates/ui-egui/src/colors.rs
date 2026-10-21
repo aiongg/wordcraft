@@ -668,17 +668,18 @@ fn custom(ui: &mut Ui, d: &mut ColorsDialog) {
     });
     ui.add_space(8.0);
     egui::Grid::new("colors_custom").num_columns(2).spacing(vec2(10.0, 5.0)).show(ui, |ui| {
-        ui.label(tl!("Color model:"));
-        egui::ComboBox::from_id_salt("colors_model")
-            .selected_text(match d.model {
-                Model::Rgb => "RGB",
-                Model::Hsl => "HSL",
-            })
-            .width(90.0)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut d.model, Model::Rgb, "RGB");
-                ui.selectable_value(&mut d.model, Model::Hsl, "HSL");
-            });
+        crate::widgets::labelled(ui, tl!("Color model:"), |ui| {
+            egui::ComboBox::from_id_salt("colors_model")
+                .selected_text(match d.model {
+                    Model::Rgb => "RGB",
+                    Model::Hsl => "HSL",
+                })
+                .width(90.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut d.model, Model::Rgb, "RGB");
+                    ui.selectable_value(&mut d.model, Model::Hsl, "HSL");
+                })
+        });
         ui.end_row();
         match d.model {
             Model::Rgb => {

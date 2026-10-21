@@ -190,39 +190,42 @@ pub fn define_list(app: &mut WordApp, ui: &mut Ui, f: &mut ListForm) -> bool {
     let Some(l) = f.levels.get_mut(i) else { return true };
     heading(ui, "Number format");
     egui::Grid::new("mll_number").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-        ui.label(tl!("Enter formatting for number:"));
-        ui.text_edit_singleline(&mut l.text);
+        crate::widgets::labelled(ui, tl!("Enter formatting for number:"), |ui| ui.text_edit_singleline(&mut l.text));
         ui.end_row();
-        ui.label(tl!("Number style for this level:"));
+        let label_id = ui.label(tl!("Number style for this level:")).id;
         let current = STYLES.iter().find(|(k, _)| *k == l.format).map(|(_, s)| *s).unwrap_or("");
-        egui::ComboBox::from_id_salt("mll_style").selected_text(style_label(current)).show_ui(ui, |ui| {
-            for (k, s) in STYLES {
-                if ui.selectable_label(l.format == k, style_label(s)).clicked() {
-                    // A new style puts this level's number in the text if it had none (a bullet
-                    // its character).
-                    if k == "bullet" {
-                        l.text = "•".into();
-                    } else if l.format == "bullet" || !l.text.contains('%') {
-                        l.text = format!("%{}.", i + 1);
+        egui::ComboBox::from_id_salt("mll_style")
+            .selected_text(style_label(current))
+            .show_ui(ui, |ui| {
+                for (k, s) in STYLES {
+                    if ui.selectable_label(l.format == k, style_label(s)).clicked() {
+                        // A new style puts this level's number in the text if it had none (a bullet
+                        // its character).
+                        if k == "bullet" {
+                            l.text = "•".into();
+                        } else if l.format == "bullet" || !l.text.contains('%') {
+                            l.text = format!("%{}.", i + 1);
+                        }
+                        l.format = k.to_string();
                     }
-                    l.format = k.to_string();
                 }
-            }
-        });
+            })
+            .response
+            .labelled_by(label_id);
         ui.end_row();
         if i > 0 {
-            ui.label(tl!("Include level number from:"));
-            egui::ComboBox::from_id_salt("mll_include").selected_text("").show_ui(ui, |ui| {
-                for k in 0..i {
-                    if ui.selectable_label(false, crate::i18n::fmt(tl!("Level {n}"), &[("n", &(k + 1).to_string())])).clicked() {
-                        l.text.push_str(&format!("%{}", k + 1));
+            crate::widgets::labelled(ui, tl!("Include level number from:"), |ui| {
+                egui::ComboBox::from_id_salt("mll_include").selected_text("").show_ui(ui, |ui| {
+                    for k in 0..i {
+                        if ui.selectable_label(false, crate::i18n::fmt(tl!("Level {n}"), &[("n", &(k + 1).to_string())])).clicked() {
+                            l.text.push_str(&format!("%{}", k + 1));
+                        }
                     }
-                }
+                })
             });
             ui.end_row();
         }
-        ui.label(tl!("Start at:"));
-        ui.add(egui::DragValue::new(&mut l.start).range(0..=32_767));
+        crate::widgets::labelled(ui, tl!("Start at:"), |ui| ui.add(egui::DragValue::new(&mut l.start).range(0..=32_767)));
         ui.end_row();
         if i > 0 {
             ui.checkbox(&mut l.restart, tl!("Restart list after:"));
@@ -236,14 +239,18 @@ pub fn define_list(app: &mut WordApp, ui: &mut Ui, f: &mut ListForm) -> bool {
             });
             ui.end_row();
         }
-        ui.label(tl!("Link level to style:"));
+        let label_id = ui.label(tl!("Link level to style:")).id;
         let shown = styles.iter().find(|(id, _)| *id == l.style).map(|(_, n)| n.clone()).unwrap_or_else(|| tl!("(no style)").to_string());
-        egui::ComboBox::from_id_salt("mll_link").selected_text(shown).show_ui(ui, |ui| {
-            ui.selectable_value(&mut l.style, String::new(), tl!("(no style)"));
-            for (id, name) in &styles {
-                ui.selectable_value(&mut l.style, id.clone(), name);
-            }
-        });
+        egui::ComboBox::from_id_salt("mll_link")
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut l.style, String::new(), tl!("(no style)"));
+                for (id, name) in &styles {
+                    ui.selectable_value(&mut l.style, id.clone(), name);
+                }
+            })
+            .response
+            .labelled_by(label_id);
         ui.end_row();
         ui.label(tl!("Font:"));
         ui.horizontal(|ui| {
@@ -271,17 +278,21 @@ pub fn define_list(app: &mut WordApp, ui: &mut Ui, f: &mut ListForm) -> bool {
         ui.label(tl!("Text indent at:"));
         ui.add(len(&mut l.indent_at, unit));
         ui.end_row();
-        ui.label(tl!("Follow number with:"));
+        let label_id = ui.label(tl!("Follow number with:")).id;
         let follow = |k: &str| match k {
             "space" => tl!("Space"),
             "nothing" => tl!("Nothing"),
             _ => tl!("Tab character"),
         };
-        egui::ComboBox::from_id_salt("mll_follow").selected_text(follow(&l.follow)).show_ui(ui, |ui| {
-            for k in ["tab", "space", "nothing"] {
-                ui.selectable_value(&mut l.follow, k.to_string(), follow(k));
-            }
-        });
+        egui::ComboBox::from_id_salt("mll_follow")
+            .selected_text(follow(&l.follow))
+            .show_ui(ui, |ui| {
+                for k in ["tab", "space", "nothing"] {
+                    ui.selectable_value(&mut l.follow, k.to_string(), follow(k));
+                }
+            })
+            .response
+            .labelled_by(label_id);
         ui.end_row();
         ui.add_enabled(l.follow == "tab", egui::Checkbox::new(&mut l.tab_on, tl!("Add tab stop at:")));
         ui.add_enabled(l.follow == "tab" && l.tab_on, len(&mut l.tab_at, unit));

@@ -143,14 +143,19 @@ fn heading(ui: &mut Ui, s: &str) {
     ui.label(egui::RichText::new(tl!(s)).font(semibold(12.5)));
 }
 
-/// A choice from `options` ((value, label)) in a drop-down.
-fn choice<T: PartialEq + Clone>(ui: &mut Ui, id: &str, value: &mut T, options: &[(T, &str)]) {
-    let label = options.iter().find(|(v, _)| v == value).map(|(_, l)| tl!(l).to_string()).unwrap_or_default();
-    egui::ComboBox::from_id_salt(id).selected_text(label).width(150.0).show_ui(ui, |ui| {
-        for (v, l) in options {
-            ui.selectable_value(value, v.clone(), tl!(l));
-        }
-    });
+/// A choice from `options` ((value, label)) in a drop-down named by the visible `label`.
+fn choice<T: PartialEq + Clone>(ui: &mut Ui, label: egui::Id, id: &str, value: &mut T, options: &[(T, &str)]) {
+    let shown = options.iter().find(|(v, _)| v == value).map(|(_, l)| tl!(l).to_string()).unwrap_or_default();
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(shown)
+        .width(150.0)
+        .show_ui(ui, |ui| {
+            for (v, l) in options {
+                ui.selectable_value(value, v.clone(), tl!(l));
+            }
+        })
+        .response
+        .labelled_by(label);
 }
 
 const LEADERS: [(&str, &str); 4] = [("none", "(none)"), ("dot", "........"), ("hyphen", "--------"), ("underscore", "________")];
@@ -305,16 +310,21 @@ fn caption_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) -> Next {
     ui.add_space(6.0);
     let mut then = None;
     egui::Grid::new("cap_opts").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-        ui.label(tl!("Label:"));
+        let label_id = ui.label(tl!("Label:")).id;
         let labels: Vec<(String, &str)> = f.labels.iter().map(|l| (l.clone(), l.as_str())).collect();
-        egui::ComboBox::from_id_salt("cap_label").selected_text(tl!(&f.label)).width(150.0).show_ui(ui, |ui| {
-            for (v, l) in &labels {
-                ui.selectable_value(&mut f.label, v.clone(), tl!(l));
-            }
-        });
+        egui::ComboBox::from_id_salt("cap_label")
+            .selected_text(tl!(&f.label))
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                for (v, l) in &labels {
+                    ui.selectable_value(&mut f.label, v.clone(), tl!(l));
+                }
+            })
+            .response
+            .labelled_by(label_id);
         ui.end_row();
-        ui.label(tl!("Position:"));
-        choice(ui, "cap_pos", &mut f.position, &[("below".to_string(), "Below the item"), ("above".to_string(), "Above the item")]);
+        let label = ui.label(tl!("Position:")).id;
+        choice(ui, label, "cap_pos", &mut f.position, &[("below".to_string(), "Below the item"), ("above".to_string(), "Above the item")]);
         ui.end_row();
     });
     ui.checkbox(&mut f.exclude_label, tl!("Leave the label out of the caption"));
@@ -406,14 +416,14 @@ impl CrossRefForm {
 fn cross_ref_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CrossRefForm) -> Next {
     let was = f.to.clone();
     egui::Grid::new("xref_opts").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-        ui.label(tl!("Reference type:"));
+        let label = ui.label(tl!("Reference type:")).id;
         let types = ref_types(app);
         let types: Vec<(String, &str)> = types.iter().map(|(v, l)| (v.clone(), l.as_str())).collect();
-        choice(ui, "xref_type", &mut f.to, &types);
+        choice(ui, label, "xref_type", &mut f.to, &types);
         ui.end_row();
-        ui.label(tl!("Insert reference to:"));
+        let label = ui.label(tl!("Insert reference to:")).id;
         let shows: Vec<(String, &str)> = f.shows().iter().map(|(v, l)| (v.to_string(), *l)).collect();
-        choice(ui, "xref_show", &mut f.show, &shows);
+        choice(ui, label, "xref_show", &mut f.show, &shows);
         ui.end_row();
     });
     if f.to != was {
@@ -446,26 +456,31 @@ fn cross_ref_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CrossRefForm) -> Next {
 
 fn numbering_ui(ui: &mut Ui, f: &mut CaptionForm, was: &CaptionForm) -> Next {
     egui::Grid::new("cap_num").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-        ui.label(tl!("Format:"));
+        let label = ui.label(tl!("Format:")).id;
         let opts: Vec<(String, &str)> = NUMBER_FORMATS.iter().map(|(v, l)| (v.to_string(), *l)).collect();
-        choice(ui, "cap_fmt", &mut f.format, &opts);
+        choice(ui, label, "cap_fmt", &mut f.format, &opts);
         ui.end_row();
     });
     ui.checkbox(&mut f.chapter, tl!("Add the chapter number"));
     ui.add_enabled_ui(f.chapter, |ui| {
         egui::Grid::new("cap_chap").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-            ui.label(tl!("Chapters begin at:"));
+            let label_id = ui.label(tl!("Chapters begin at:")).id;
             let opts: Vec<(u8, String)> = (1..=9u8).map(|l| (l, crate::i18n::fmt(tl!("Heading {n}"), &[("n", &l.to_string())]))).collect();
             let shown = opts.iter().find(|(l, _)| *l == f.chapter_level).map(|(_, s)| s.clone()).unwrap_or_default();
-            egui::ComboBox::from_id_salt("cap_level").selected_text(shown).width(150.0).show_ui(ui, |ui| {
-                for (l, s) in &opts {
-                    ui.selectable_value(&mut f.chapter_level, *l, s);
-                }
-            });
+            egui::ComboBox::from_id_salt("cap_level")
+                .selected_text(shown)
+                .width(150.0)
+                .show_ui(ui, |ui| {
+                    for (l, s) in &opts {
+                        ui.selectable_value(&mut f.chapter_level, *l, s);
+                    }
+                })
+                .response
+                .labelled_by(label_id);
             ui.end_row();
-            ui.label(tl!("Separator:"));
+            let label = ui.label(tl!("Separator:")).id;
             let opts: Vec<(String, &str)> = SEPARATORS.iter().map(|(v, l)| (v.to_string(), *l)).collect();
-            choice(ui, "cap_sep", &mut f.separator, &opts);
+            choice(ui, label, "cap_sep", &mut f.separator, &opts);
             ui.end_row();
         });
     });
@@ -482,8 +497,7 @@ fn numbering_ui(ui: &mut Ui, f: &mut CaptionForm, was: &CaptionForm) -> Next {
 }
 
 fn new_label_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) -> Next {
-    ui.label(tl!("Label:"));
-    let r = ui.add(egui::TextEdit::singleline(&mut f.new_label).desired_width(260.0));
+    let r = crate::widgets::labelled(ui, tl!("Label:"), |ui| ui.add(egui::TextEdit::singleline(&mut f.new_label).desired_width(260.0)));
     r.request_focus();
     let (ok, cancel) = buttons(ui, tl!("OK"));
     let name: String = f.new_label.chars().filter(|c| !matches!(c, '"' | '\\') && !c.is_control()).take(40).collect::<String>().trim().to_string();
@@ -570,16 +584,15 @@ fn index_ui(app: &mut WordApp, ui: &mut Ui, f: &mut IndexForm) -> Next {
             ui.radio_value(&mut f.kind, "runIn".to_string(), tl!("Run-in"));
         });
         ui.end_row();
-        ui.label(tl!("Columns:"));
-        ui.add(egui::DragValue::new(&mut f.columns).range(1..=4));
+        crate::widgets::labelled(ui, tl!("Columns:"), |ui| ui.add(egui::DragValue::new(&mut f.columns).range(1..=4)));
         ui.end_row();
         ui.label("");
         ui.checkbox(&mut f.right_align, tl!("Page numbers at the right margin"));
         ui.end_row();
-        ui.label(tl!("Tab leader:"));
+        let label = ui.label(tl!("Tab leader:")).id;
         ui.add_enabled_ui(f.right_align, |ui| {
             let opts: Vec<(String, &str)> = LEADERS.iter().map(|(v, l)| (v.to_string(), *l)).collect();
-            choice(ui, "idx_leader", &mut f.leader, &opts);
+            choice(ui, label, "idx_leader", &mut f.leader, &opts);
         });
         ui.end_row();
         ui.label("");
@@ -647,11 +660,9 @@ impl MarkForm {
 fn mark_ui(app: &mut WordApp, ui: &mut Ui, f: &mut MarkForm) -> Next {
     heading(ui, "Index");
     egui::Grid::new("xe").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-        ui.label(tl!("Main entry:"));
-        ui.add(egui::TextEdit::singleline(&mut f.entry).desired_width(220.0));
+        crate::widgets::labelled(ui, tl!("Main entry:"), |ui| ui.add(egui::TextEdit::singleline(&mut f.entry).desired_width(220.0)));
         ui.end_row();
-        ui.label(tl!("Subentry:"));
-        ui.add(egui::TextEdit::singleline(&mut f.subentry).desired_width(220.0));
+        crate::widgets::labelled(ui, tl!("Subentry:"), |ui| ui.add(egui::TextEdit::singleline(&mut f.subentry).desired_width(220.0)));
         ui.end_row();
     });
     heading(ui, "Options");
@@ -807,17 +818,16 @@ fn toc_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TocForm) -> Next {
     ui.add_enabled_ui(f.page_numbers, |ui| {
         ui.checkbox(&mut f.right_align, tl!("Page numbers at the right margin"));
         ui.horizontal(|ui| {
-            ui.label(tl!("Tab leader:"));
+            let label = ui.label(tl!("Tab leader:")).id;
             ui.add_enabled_ui(f.right_align, |ui| {
                 let opts: Vec<(String, &str)> = LEADERS.iter().map(|(v, l)| (v.to_string(), *l)).collect();
-                choice(ui, "toc_leader", &mut f.leader, &opts);
+                choice(ui, label, "toc_leader", &mut f.leader, &opts);
             });
         });
     });
     ui.checkbox(&mut f.hyperlinks, tl!("Link entries to their headings"));
     ui.horizontal(|ui| {
-        ui.label(tl!("Levels:"));
-        ui.add(egui::DragValue::new(&mut f.levels).range(1..=9));
+        crate::widgets::labelled(ui, tl!("Levels:"), |ui| ui.add(egui::DragValue::new(&mut f.levels).range(1..=9)));
     });
     ui.add_space(4.0);
     let mut then = None;
@@ -850,8 +860,9 @@ fn toc_options_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TocForm, was: &TocForm
             for (name, level) in f.style_levels.iter_mut() {
                 // Built-in styles read in the interface language; the document keeps the English name.
                 let shown = app.session.doc.styles.styles.iter().find(|st| st.name == *name).map_or_else(|| name.clone(), crate::i18n::style_name);
-                ui.label(shown);
-                ui.add(egui::DragValue::new(level).range(0..=9).custom_formatter(|v, _| if v < 0.5 { String::new() } else { format!("{v:.0}") }));
+                crate::widgets::labelled(ui, shown, |ui| {
+                    ui.add(egui::DragValue::new(level).range(0..=9).custom_formatter(|v, _| if v < 0.5 { String::new() } else { format!("{v:.0}") }))
+                });
                 ui.end_row();
             }
         });
@@ -1046,13 +1057,18 @@ impl SourceForm {
 
 fn source_ui(app: &mut WordApp, ui: &mut Ui, f: &mut SourceForm) -> Next {
     egui::Grid::new("src").num_columns(2).spacing(vec2(10.0, 5.0)).show(ui, |ui| {
-        ui.label(tl!("Source type:"));
+        let label_id = ui.label(tl!("Source type:")).id;
         let shown = SOURCE_TYPES.iter().find(|(k, ..)| *k == f.source.kind).map(|(_, l, _)| tl!(l).to_string()).unwrap_or_default();
-        egui::ComboBox::from_id_salt("src_kind").selected_text(shown).width(200.0).show_ui(ui, |ui| {
-            for (k, l, _) in SOURCE_TYPES {
-                ui.selectable_value(&mut f.source.kind, k.to_string(), tl!(l));
-            }
-        });
+        egui::ComboBox::from_id_salt("src_kind")
+            .selected_text(shown)
+            .width(200.0)
+            .show_ui(ui, |ui| {
+                for (k, l, _) in SOURCE_TYPES {
+                    ui.selectable_value(&mut f.source.kind, k.to_string(), tl!(l));
+                }
+            })
+            .response
+            .labelled_by(label_id);
         ui.end_row();
         let edit = f.edit;
         for (key, label) in f.fields() {

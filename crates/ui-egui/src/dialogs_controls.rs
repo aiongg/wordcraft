@@ -114,15 +114,12 @@ impl ControlForm {
 pub fn body(app: &mut WordApp, ui: &mut Ui, f: &mut ControlForm) -> bool {
     ui.set_width(420.0);
     egui::Grid::new("cc_props").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-        ui.label(tl!("Title"));
-        ui.add(egui::TextEdit::singleline(&mut f.title).desired_width(280.0));
+        crate::widgets::labelled(ui, tl!("Title"), |ui| ui.add(egui::TextEdit::singleline(&mut f.title).desired_width(280.0)));
         ui.end_row();
-        ui.label(tl!("Tag"));
-        ui.add(egui::TextEdit::singleline(&mut f.tag).desired_width(280.0));
+        crate::widgets::labelled(ui, tl!("Tag"), |ui| ui.add(egui::TextEdit::singleline(&mut f.tag).desired_width(280.0)));
         ui.end_row();
         if !matches!(f.kind.as_str(), "checkBox" | "picture" | "repeatingSection" | "repeatingSectionItem") {
-            ui.label(tl!("Placeholder text"));
-            ui.add(egui::TextEdit::singleline(&mut f.placeholder).desired_width(280.0));
+            crate::widgets::labelled(ui, tl!("Placeholder text"), |ui| ui.add(egui::TextEdit::singleline(&mut f.placeholder).desired_width(280.0)));
             ui.end_row();
         }
     });
@@ -138,8 +135,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, f: &mut ControlForm) -> bool {
         "date" => {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label(tl!("Date format"));
-                ui.add(egui::TextEdit::singleline(&mut f.format).desired_width(160.0));
+                crate::widgets::labelled(ui, tl!("Date format"), |ui| ui.add(egui::TextEdit::singleline(&mut f.format).desired_width(160.0)));
             });
             ui.horizontal(|ui| {
                 for pic in ["M/d/yyyy", "d.M.yyyy", "yyyy-MM-dd", "dddd, MMMM d, yyyy"] {
@@ -152,10 +148,12 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, f: &mut ControlForm) -> bool {
         "checkBox" => {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label(tl!("Checked symbol"));
-                ui.add(egui::TextEdit::singleline(&mut f.checked_symbol).desired_width(40.0));
-                ui.label(tl!("Unchecked symbol"));
-                ui.add(egui::TextEdit::singleline(&mut f.unchecked_symbol).desired_width(40.0));
+                crate::widgets::labelled(ui, tl!("Checked symbol"), |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut f.checked_symbol).desired_width(40.0))
+                });
+                crate::widgets::labelled(ui, tl!("Unchecked symbol"), |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut f.unchecked_symbol).desired_width(40.0))
+                });
             });
         }
         _ => {}

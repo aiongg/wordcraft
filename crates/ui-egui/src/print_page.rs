@@ -81,18 +81,24 @@ const PARITIES: [(&str, &str); 3] = [("all", "All pages in the range"), ("odd", 
 const NO_SCALING: &str = "none";
 const ORIENTATIONS: [(&str, &str); 3] = [("auto", "Auto orientation"), ("portrait", "Portrait"), ("landscape", "Landscape")];
 
-/// A choice list over `(id, label)` pairs; true when the choice changed.
-fn choice(ui: &mut Ui, salt: &str, current: &mut String, items: &[(&str, &str)]) -> bool {
+/// A choice list over `(id, label)` pairs, named by the heading `label`; true when the choice
+/// changed.
+fn choice(ui: &mut Ui, label: egui::Id, salt: &str, current: &mut String, items: &[(&str, &str)]) -> bool {
     let shown = items.iter().find(|(id, _)| *id == current.as_str()).map_or("", |(_, l)| *l);
     let mut changed = false;
-    egui::ComboBox::from_id_salt(salt).width(260.0).selected_text(tl!(shown)).show_ui(ui, |ui| {
-        for (id, label) in items {
-            if ui.selectable_label(current == id, tl!(label)).clicked() && current != id {
-                *current = (*id).to_string();
-                changed = true;
+    egui::ComboBox::from_id_salt(salt)
+        .width(260.0)
+        .selected_text(tl!(shown))
+        .show_ui(ui, |ui| {
+            for (id, text) in items {
+                if ui.selectable_label(current == id, tl!(text)).clicked() && current != id {
+                    *current = (*id).to_string();
+                    changed = true;
+                }
             }
-        }
-    });
+        })
+        .response
+        .labelled_by(label);
     changed
 }
 
@@ -185,10 +191,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                         ui.add_enabled(!app.printing.busy(), egui::Checkbox::new(&mut app.ui.print.collate, tl!("Collate copies")));
                     }
                 } else {
-                    ui.label(egui::RichText::new(tl!("Copies")).font(medium(13.0)));
+                    let label = ui.label(egui::RichText::new(tl!("Copies")).font(medium(13.0))).id;
                     ui.horizontal(|ui| {
                         let mut n = app.ui.print.copies;
-                        ui.add(egui::DragValue::new(&mut n).range(1..=wordcraft_engine::print::MAX_COPIES).speed(0.2));
+                        ui.add(egui::DragValue::new(&mut n).range(1..=wordcraft_engine::print::MAX_COPIES).speed(0.2)).labelled_by(label);
                         app.ui.print.copies = n.clamp(1, wordcraft_engine::print::MAX_COPIES);
                         if app.ui.print.copies > 1 {
                             ui.checkbox(&mut app.ui.print.collate, tl!("Collate copies"));
@@ -196,8 +202,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     });
                 }
 
-                ui.label(egui::RichText::new(tl!("Pages")).font(medium(13.0)));
-                if choice(ui, "print_range", &mut app.ui.print.range, &RANGES) {
+                let pages = ui.label(egui::RichText::new(tl!("Pages")).font(medium(13.0))).id;
+                if choice(ui, pages, "print_range", &mut app.ui.print.range, &RANGES) {
                     // Show the first page that will print.
                     app.ui.print.preview = if app.ui.print.range == "all" { 0 } else { current.0.min(total.saturating_sub(1)) };
                 }
@@ -209,14 +215,14 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             .char_limit(wordcraft_engine::print::MAX_SPEC_CHARS),
                     );
                 }
-                choice(ui, "print_parity", &mut app.ui.print.parity, &PARITIES);
-                ui.label(egui::RichText::new(tl!("Orientation")).font(medium(13.0)));
-                choice(ui, "print_orientation", &mut app.ui.print.orientation, &ORIENTATIONS);
+                choice(ui, pages, "print_parity", &mut app.ui.print.parity, &PARITIES);
+                let label = ui.label(egui::RichText::new(tl!("Orientation")).font(medium(13.0))).id;
+                choice(ui, label, "print_orientation", &mut app.ui.print.orientation, &ORIENTATIONS);
                 // Word: Pages per sheet › Scale to paper size. Only the printout changes.
-                ui.label(egui::RichText::new(tl!("Scale to paper size")).font(medium(13.0)));
+                let label = ui.label(egui::RichText::new(tl!("Scale to paper size")).font(medium(13.0))).id;
                 let papers: Vec<(&str, &str)> =
                     std::iter::once((NO_SCALING, "No Scaling")).chain(wordcraft_geom::PAPER_SIZES.iter().map(|(n, _, _)| (*n, *n))).collect();
-                choice(ui, "print_paper", &mut app.ui.print.paper, &papers);
+                choice(ui, label, "print_paper", &mut app.ui.print.paper, &papers);
 
                 match wordcraft_engine::print::plan(&app.ui.print.params(), total, current) {
                     Ok(plan) => {

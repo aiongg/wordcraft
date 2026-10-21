@@ -97,15 +97,17 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         let id = egui::Id::unique("read-aloud-rate");
         let mut rate = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or_else(|| app.session.read_aloud.rate());
         ui.horizontal(|ui| {
-            ui.label(tl!("Speed"));
+            let label = ui.label(tl!("Speed")).id;
             ui.spacing_mut().slider_width = 110.0;
-            let r = ui.add(
-                egui::Slider::new(&mut rate, MIN_RATE..=MAX_RATE)
-                    .step_by(0.05)
-                    .trailing_fill(true)
-                    .custom_formatter(|v, _| format!("{v:.2}×"))
-                    .custom_parser(|s| s.trim().trim_end_matches(['×', 'x']).trim().parse().ok()),
-            );
+            let r = ui.label_inputs_by(label, |ui| {
+                ui.add(
+                    egui::Slider::new(&mut rate, MIN_RATE..=MAX_RATE)
+                        .step_by(0.05)
+                        .trailing_fill(true)
+                        .custom_formatter(|v, _| format!("{v:.2}×"))
+                        .custom_parser(|s| s.trim().trim_end_matches(['×', 'x']).trim().parse().ok()),
+                )
+            });
             if r.dragged() {
                 ui.data_mut(|d| d.insert_temp(id, rate));
             } else {

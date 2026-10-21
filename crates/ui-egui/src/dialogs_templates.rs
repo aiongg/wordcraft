@@ -233,8 +233,7 @@ pub fn organizer(app: &mut WordApp, ui: &mut Ui, f: &mut OrganizerForm) -> bool 
     if let Some(new) = f.rename.as_mut() {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.label(tl!("Name:"));
-            let r = ui.add(egui::TextEdit::singleline(new).desired_width(220.0));
+            let r = crate::widgets::labelled(ui, tl!("Name:"), |ui| ui.add(egui::TextEdit::singleline(new).desired_width(220.0)));
             renamed = ui.button(tl!("OK")).clicked() || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
         });
     }

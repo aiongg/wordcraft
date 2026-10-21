@@ -422,6 +422,8 @@ impl Builder<'_> {
             n.set_character_widths(run.xs.iter().map(|c| c.1 * at.scale).collect::<Vec<f32>>());
         }
         n.set_word_starts(word_starts(&run.text, &run.lens));
+        // A link is named by its text, as a screen reader announces a link in a web page.
+        let link_name = run.link.as_ref().map(|_| run.text.clone());
         n.set_value(run.text);
         n.set_character_lengths(run.lens.clone());
         if let Some((pseg, _)) = lb.prev {
@@ -436,6 +438,9 @@ impl Builder<'_> {
                 let lid = lb.pid.with(("link", lb.li, lb.seg));
                 let mut l = Node::new(Role::Link);
                 l.set_url(url.clone());
+                if let Some(name) = link_name {
+                    l.set_label(name);
+                }
                 l.set_bounds(bounds(r));
                 self.add(lid, Some(lb.pid), l);
                 lid
@@ -626,6 +631,7 @@ mod tests {
         assert!(texts(Role::Paragraph).contains(&"Read this link\n".to_string()), "{:?}", texts(Role::Paragraph));
         assert_eq!(texts(Role::Link), ["link"]);
         assert_eq!(nodes[&of(Role::Link)[0]].url(), Some("https://example.com"));
+        assert_eq!(nodes[&of(Role::Link)[0]].label(), Some("link"), "a link is named by its text");
         assert_eq!(of(Role::List).len(), 1, "one list");
         assert_eq!(texts(Role::ListItem), ["First item\n"]);
         assert_eq!(nodes[&of(Role::ListItem)[0]].level(), Some(1));

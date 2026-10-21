@@ -165,18 +165,18 @@ fn drop_cap_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DropCapForm) -> bool {
     let unit = crate::options::unit();
     ui.add_enabled_ui(f.position != "none", |ui| {
         egui::Grid::new("dropcap").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-            ui.label(tl!("Font:"));
-            if let Some(v) = crate::widgets::font_combo(ui, "dropcap_font", 190.0, &f.font, &fams, Some(&*preview))
-                && v != crate::widgets::ADD_FONT
+            if let Some(v) = crate::widgets::labelled(ui, tl!("Font:"), |ui| {
+                crate::widgets::font_combo(ui, "dropcap_font", 190.0, &f.font, &fams, Some(&*preview))
+            }) && v != crate::widgets::ADD_FONT
             {
                 f.font = v;
             }
             ui.end_row();
-            ui.label(tl!("Lines to drop:"));
-            ui.add(egui::DragValue::new(&mut f.lines).range(1..=10));
+            crate::widgets::labelled(ui, tl!("Lines to drop:"), |ui| ui.add(egui::DragValue::new(&mut f.lines).range(1..=10)));
             ui.end_row();
-            ui.label(tl!("Distance from text:"));
-            ui.add(egui::DragValue::new(&mut f.distance).speed(0.01).range(0.0..=22.0 * 72.0 / unit.pt_per_unit()).measure(unit).max_decimals(2));
+            crate::widgets::labelled(ui, tl!("Distance from text:"), |ui| {
+                ui.add(egui::DragValue::new(&mut f.distance).speed(0.01).range(0.0..=22.0 * 72.0 / unit.pt_per_unit()).measure(unit).max_decimals(2))
+            });
             ui.end_row();
         });
     });
@@ -472,9 +472,9 @@ fn columns_ui(app: &mut WordApp, ui: &mut Ui, f: &mut ColumnsForm) -> bool {
     });
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        ui.label(tl!("Number of columns:"));
+        let label_id = ui.label(tl!("Number of columns:")).id;
         let mut n = f.count;
-        if ui.add(egui::DragValue::new(&mut n).range(1..=12)).changed() {
+        if ui.add(egui::DragValue::new(&mut n).range(1..=12)).labelled_by(label_id).changed() {
             f.set_count(n);
         }
         ui.add_space(16.0);
@@ -863,17 +863,22 @@ fn symbol_ui(app: &mut WordApp, ui: &mut Ui, f: &mut SymbolForm) -> bool {
                 f.load();
             }
             ui.add_space(8.0);
-            ui.label(tl!("Subset:"));
+            let label_id = ui.label(tl!("Subset:")).id;
             let current = f.selected.and_then(subset_of).unwrap_or("");
             let mut chosen = None;
-            egui::ComboBox::from_id_salt("symbol_subset").selected_text(current).width(170.0).show_ui(ui, |ui| {
-                for (name, a, b) in SUBSETS {
-                    let i = f.chars.partition_point(|c| (*c as u32) < *a);
-                    if f.chars.get(i).is_some_and(|c| (*c as u32) <= *b) && ui.selectable_label(*name == current, *name).clicked() {
-                        chosen = Some(*name);
+            egui::ComboBox::from_id_salt("symbol_subset")
+                .selected_text(current)
+                .width(170.0)
+                .show_ui(ui, |ui| {
+                    for (name, a, b) in SUBSETS {
+                        let i = f.chars.partition_point(|c| (*c as u32) < *a);
+                        if f.chars.get(i).is_some_and(|c| (*c as u32) <= *b) && ui.selectable_label(*name == current, *name).clicked() {
+                            chosen = Some(*name);
+                        }
                     }
-                }
-            });
+                })
+                .response
+                .labelled_by(label_id);
             if let Some(s) = chosen {
                 f.jump_to(s);
             }
@@ -942,8 +947,9 @@ fn symbol_ui(app: &mut WordApp, ui: &mut Ui, f: &mut SymbolForm) -> bool {
             let name = f.selected.map(|c| format!("U+{:04X}", c as u32)).unwrap_or_default();
             ui.label(egui::RichText::new(name).font(semibold(12.0)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(tl!("from Unicode (hex)"));
-                let resp = ui.add(egui::TextEdit::singleline(&mut f.code).desired_width(70.0).font(egui::TextStyle::Monospace));
+                let resp = crate::widgets::labelled(ui, tl!("from Unicode (hex)"), |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut f.code).desired_width(70.0).font(egui::TextStyle::Monospace))
+                });
                 if resp.changed() {
                     let code = f.code.clone();
                     f.select_code(&code);
@@ -1277,13 +1283,18 @@ fn field_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FieldForm) -> bool {
         ui.vertical(|ui| {
             ui.set_width(200.0);
             ui.label(egui::RichText::new(tl!("Pick a field from the list")).font(semibold(12.5)));
-            ui.label(tl!("Categories:"));
+            let label_id = ui.label(tl!("Categories:")).id;
             let shown = tl!(f.category.as_str()).to_string();
-            egui::ComboBox::from_id_salt("field_category").selected_text(shown).width(190.0).show_ui(ui, |ui| {
-                for c in FIELD_CATEGORIES {
-                    ui.selectable_value(&mut f.category, (*c).to_string(), tl!(c));
-                }
-            });
+            egui::ComboBox::from_id_salt("field_category")
+                .selected_text(shown)
+                .width(190.0)
+                .show_ui(ui, |ui| {
+                    for c in FIELD_CATEGORIES {
+                        ui.selectable_value(&mut f.category, (*c).to_string(), tl!(c));
+                    }
+                })
+                .response
+                .labelled_by(label_id);
             ui.label(tl!("Field names:"));
             let mut picked = None;
             egui::Frame::new().stroke(Stroke::new(1.0, t.border)).inner_margin(2.0).show(ui, |ui| {
@@ -1308,8 +1319,9 @@ fn field_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FieldForm) -> bool {
             }
             ui.add_space(4.0);
             if f.codes {
-                ui.label(tl!("Field codes:"));
-                ui.add(egui::TextEdit::multiline(&mut f.code).desired_rows(3).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
+                crate::widgets::labelled(ui, tl!("Field codes:"), |ui| {
+                    ui.add(egui::TextEdit::multiline(&mut f.code).desired_rows(3).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace))
+                });
                 ui.label(egui::RichText::new(tl!("Type the field's name and its switches, for example PAGE \\* roman.")).small().color(t.text_dim));
             } else {
                 field_options(ui, f, &t);
@@ -1343,8 +1355,9 @@ fn field_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FieldForm) -> bool {
 fn field_options(ui: &mut Ui, f: &mut FieldForm, t: &Tokens) {
     match field_kind(&f.name) {
         FieldKind::Date => {
-            ui.label(tl!("Date formats:"));
-            ui.add(egui::TextEdit::singleline(&mut f.date_format).desired_width(f32::INFINITY));
+            crate::widgets::labelled(ui, tl!("Date formats:"), |ui| {
+                ui.add(egui::TextEdit::singleline(&mut f.date_format).desired_width(f32::INFINITY))
+            });
             egui::Frame::new().stroke(Stroke::new(1.0, t.border)).inner_margin(2.0).show(ui, |ui| {
                 egui::ScrollArea::vertical().id_salt("field_dates").max_height(170.0).auto_shrink([false, false]).show(ui, |ui| {
                     for pic in DATE_FORMATS {
@@ -1358,19 +1371,20 @@ fn field_options(ui: &mut Ui, f: &mut FieldForm, t: &Tokens) {
         }
         FieldKind::Number | FieldKind::Sequence => {
             if field_kind(&f.name) == FieldKind::Sequence {
-                ui.label(tl!("Sequence name:"));
-                ui.add(egui::TextEdit::singleline(&mut f.target).desired_width(200.0));
+                crate::widgets::labelled(ui, tl!("Sequence name:"), |ui| ui.add(egui::TextEdit::singleline(&mut f.target).desired_width(200.0)));
             }
-            ui.label(tl!("Format:"));
+            let label_id = ui.label(tl!("Format:")).id;
             let shown = NUMBER_FORMATS.iter().find(|(v, _)| *v == f.number_format).map(|(_, l)| *l).unwrap_or("(none)");
-            egui::ComboBox::from_id_salt("field_number").selected_text(if shown == "(none)" { tl!(shown) } else { shown }).width(200.0).show_ui(
-                ui,
-                |ui| {
+            egui::ComboBox::from_id_salt("field_number")
+                .selected_text(if shown == "(none)" { tl!(shown) } else { shown })
+                .width(200.0)
+                .show_ui(ui, |ui| {
                     for (v, l) in NUMBER_FORMATS {
                         ui.selectable_value(&mut f.number_format, (*v).to_string(), if *l == "(none)" { tl!(l) } else { l });
                     }
-                },
-            );
+                })
+                .response
+                .labelled_by(label_id);
         }
         FieldKind::Bookmark => {
             ui.label(tl!("Bookmark name:"));
@@ -1386,8 +1400,7 @@ fn field_options(ui: &mut Ui, f: &mut FieldForm, t: &Tokens) {
             }
         }
         FieldKind::Merge => {
-            ui.label(tl!("Field name:"));
-            ui.add(egui::TextEdit::singleline(&mut f.target).desired_width(200.0));
+            crate::widgets::labelled(ui, tl!("Field name:"), |ui| ui.add(egui::TextEdit::singleline(&mut f.target).desired_width(200.0)));
             if !f.merge_fields.is_empty() {
                 ui.horizontal_wrapped(|ui| {
                     for m in f.merge_fields.clone() {
@@ -1399,11 +1412,12 @@ fn field_options(ui: &mut Ui, f: &mut FieldForm, t: &Tokens) {
             }
         }
         FieldKind::Style => {
-            ui.label(tl!("Style name:"));
-            egui::ComboBox::from_id_salt("field_style").selected_text(f.target.clone()).width(200.0).show_ui(ui, |ui| {
-                for n in &f.styles {
-                    ui.selectable_value(&mut f.target, n.clone(), n);
-                }
+            crate::widgets::labelled(ui, tl!("Style name:"), |ui| {
+                egui::ComboBox::from_id_salt("field_style").selected_text(f.target.clone()).width(200.0).show_ui(ui, |ui| {
+                    for n in &f.styles {
+                        ui.selectable_value(&mut f.target, n.clone(), n);
+                    }
+                })
             });
             ui.add_space(4.0);
             for (c, label) in STYLEREF_SWITCHES {

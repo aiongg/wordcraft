@@ -696,6 +696,12 @@ pub(crate) fn swatch(ui: &mut Ui, c: wordcraft_doc::Rgb) -> bool {
     resp.on_hover_text(format!("#{}", c.hex())).clicked()
 }
 
+/// The label `text`, then the inputs `add` draws, which the label names for screen readers.
+pub fn labelled<R>(ui: &mut Ui, text: impl Into<egui::WidgetText>, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let label = ui.label(text).id;
+    ui.label_inputs_by(label, add)
+}
+
 /// A ribbon-style text field with a dropdown list. Returns a chosen/typed value; Enter commits
 /// the typed text as is (the font size box relies on that: "1" must not become "10").
 pub fn combo(
@@ -870,7 +876,7 @@ fn combo_impl(
         let arrow_bg = ui.painter().add(egui::Shape::Noop);
         let resp = ui.add(te);
         // The hint is the field's name for screen readers; a field without one is named by the
-        // label beside it (`labelled`).
+        // label beside it ([`labelled`] or `Ui::label_inputs_by`).
         let resp = if tip.is_empty() { resp } else { resp.accessible_name(tip) };
         keytip_badge(ui, resp.rect, "combo", id);
         focused = resp.has_focus();
@@ -1705,7 +1711,7 @@ mod tests {
             let fonts: Vec<String> = (0..24).map(|n| format!("Family {n:02}")).collect();
             let recent: Vec<String> = ["Georgia", "Courier New"].map(String::from).to_vec();
             let mut h = egui_kittest::Harness::builder().with_size(vec2(400.0, 600.0)).build_ui(move |ui| {
-                font_combo_with_recent(ui, "recent_ci_reduced", 150.0, "", &fonts, &recent, None);
+                font_combo_with_recent_hint(ui, "recent_ci_reduced", 150.0, "", &fonts, &recent, None, "Font");
             });
             h.run_steps(2);
             h.get(By::new().role(Role::TextInput)).focus();

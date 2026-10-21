@@ -207,19 +207,20 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
     ui.add_space(8.0);
     section(ui, "Personalize");
     egui::Grid::new("options_user").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
-        ui.label(tl!("User name:"));
+        let label_id = ui.label(tl!("User name:")).id;
         let mut n = app.session.author.clone();
-        if ui.add(egui::TextEdit::singleline(&mut n).desired_width(260.0)).changed() {
+        if ui.add(egui::TextEdit::singleline(&mut n).desired_width(260.0)).labelled_by(label_id).changed() {
             app.session.author = n;
         }
         ui.end_row();
-        ui.label(tl!("Initials:"));
+        let label_id = ui.label(tl!("Initials:")).id;
         let mut i = app.session.initials.clone();
         let hint = app.session.user_initials();
         if ui
             .add(
                 egui::TextEdit::singleline(&mut i).desired_width(80.0).char_limit(wordcraft_engine::cmd::options::MAX_INITIALS_CHARS).hint_text(hint),
             )
+            .labelled_by(label_id)
             .changed()
         {
             set(app, json!({"initials": i}));
@@ -441,8 +442,9 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Read Aloud");
     let mut rate = app.session.read_aloud.rate();
     ui.horizontal(|ui| {
-        ui.label(tl!("Speed"));
-        let r = ui.add(egui::Slider::new(&mut rate, MIN_RATE..=MAX_RATE).step_by(0.05).custom_formatter(|v, _| format!("{v:.2}×")));
+        let r = crate::widgets::labelled(ui, tl!("Speed"), |ui| {
+            ui.add(egui::Slider::new(&mut rate, MIN_RATE..=MAX_RATE).step_by(0.05).custom_formatter(|v, _| format!("{v:.2}×")))
+        });
         if r.changed() {
             let _ = app.run("readAloud.speed", json!({"value": rate}));
         }
@@ -470,47 +472,57 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     ui.add_space(8.0);
     section(ui, "Display");
     egui::Grid::new("options_display").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
-        ui.label(tl!("Recent documents to show:"));
+        let label_id = ui.label(tl!("Recent documents to show:")).id;
         let mut n = app.ui.recent_shown();
-        if ui.add(egui::DragValue::new(&mut n).range(0..=crate::MAX_RECENT).speed(0.2)).changed() {
+        if ui.add(egui::DragValue::new(&mut n).range(0..=crate::MAX_RECENT).speed(0.2)).labelled_by(label_id).changed() {
             app.ui.recent_count = n;
         }
         ui.end_row();
-        ui.label(tl!("Measurement units:"));
+        let label_id = ui.label(tl!("Measurement units:")).id;
         // The user's choice, else the region's (#838): Automatic follows the region.
         let units = app.session.units();
         let auto = app.session.prefs.units.is_none();
         let name = UNITS.iter().find(|(u, _)| *u == units).map_or("Inches", |(_, n)| n);
         let shown = if auto { format!("{} ({})", tl!("Automatic"), tl!(name)) } else { tl!(name).to_string() };
-        egui::ComboBox::from_id_salt("options_units").selected_text(shown).width(200.0).show_ui(ui, |ui| {
-            if ui.selectable_label(auto, tl!("Automatic")).clicked() {
-                set(app, json!({"units": "auto"}));
-            }
-            for (u, label) in UNITS {
-                if ui.selectable_label(!auto && units == u, tl!(label)).clicked() {
-                    set(app, json!({"units": u}));
+        egui::ComboBox::from_id_salt("options_units")
+            .selected_text(shown)
+            .width(200.0)
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(auto, tl!("Automatic")).clicked() {
+                    set(app, json!({"units": "auto"}));
                 }
-            }
-        });
+                for (u, label) in UNITS {
+                    if ui.selectable_label(!auto && units == u, tl!(label)).clicked() {
+                        set(app, json!({"units": u}));
+                    }
+                }
+            })
+            .response
+            .labelled_by(label_id);
         ui.end_row();
         // The region new documents, units and the decimal separator follow; Automatic is the
         // system's (#838).
-        ui.label(tl!("Region:"));
+        let label_id = ui.label(tl!("Region:")).id;
         let chosen = app.session.prefs.region.clone();
         let system = &app.session.system_region;
         let system_tag = if system.territory.is_empty() { system.language.clone() } else { format!("{}-{}", system.language, system.territory) };
         let automatic = crate::i18n::fmt(tl!("Automatic ({region})"), &[("region", system_tag.as_str())]);
         let shown = chosen.clone().unwrap_or_else(|| automatic.clone());
-        egui::ComboBox::from_id_salt("options_region").selected_text(shown).width(200.0).show_ui(ui, |ui| {
-            if ui.selectable_label(chosen.is_none(), automatic.as_str()).clicked() {
-                set(app, json!({"region": "auto"}));
-            }
-            for tag in REGIONS {
-                if ui.selectable_label(chosen.as_deref() == Some(tag), tag).clicked() {
-                    set(app, json!({"region": tag}));
+        egui::ComboBox::from_id_salt("options_region")
+            .selected_text(shown)
+            .width(200.0)
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(chosen.is_none(), automatic.as_str()).clicked() {
+                    set(app, json!({"region": "auto"}));
                 }
-            }
-        });
+                for tag in REGIONS {
+                    if ui.selectable_label(chosen.as_deref() == Some(tag), tag).clicked() {
+                        set(app, json!({"region": tag}));
+                    }
+                }
+            })
+            .response
+            .labelled_by(label_id);
         ui.end_row();
     });
     let mut keytips = app.ui.keytips_enabled;
@@ -554,13 +566,14 @@ fn agents(ui: &mut Ui) {
 fn theme_picker(app: &mut WordApp, ui: &mut Ui) {
     use crate::theme::Appearance;
     ui.horizontal(|ui| {
-        ui.label(tl!("Interface theme:"));
-        egui::ComboBox::from_id_salt("interface_theme").selected_text(tl!(app.ui.theme.label())).width(220.0).show_ui(ui, |ui| {
-            for a in Appearance::ALL {
-                if ui.selectable_label(app.ui.theme == a, tl!(a.label())).clicked() {
-                    let _ = app.run("ui.theme", json!({"value": a.code()}));
+        crate::widgets::labelled(ui, tl!("Interface theme:"), |ui| {
+            egui::ComboBox::from_id_salt("interface_theme").selected_text(tl!(app.ui.theme.label())).width(220.0).show_ui(ui, |ui| {
+                for a in Appearance::ALL {
+                    if ui.selectable_label(app.ui.theme == a, tl!(a.label())).clicked() {
+                        let _ = app.run("ui.theme", json!({"value": a.code()}));
+                    }
                 }
-            }
+            })
         });
     });
 }
@@ -574,16 +587,17 @@ fn interface_size_picker(app: &mut WordApp, ui: &mut Ui) {
     let auto = crate::i18n::fmt(tl!("Auto ({percent}%)"), &[("percent", &InterfaceSize::AUTO.drawn_percent(native).to_string())]);
     let selected = size.percent().map_or_else(|| auto.clone(), |pct| format!("{pct}%"));
     ui.horizontal(|ui| {
-        ui.label(tl!("Interface size:"));
-        egui::ComboBox::from_id_salt("interface_size").selected_text(selected).width(220.0).show_ui(ui, |ui| {
-            if ui.selectable_label(size.is_auto(), auto).clicked() {
-                let _ = app.run("ui.interfaceSize", json!({"value": "auto"}));
-            }
-            for pct in InterfaceSize::PRESETS {
-                if ui.selectable_label(size.percent() == Some(pct), format!("{pct}%")).clicked() {
-                    let _ = app.run("ui.interfaceSize", json!({"percent": pct}));
+        crate::widgets::labelled(ui, tl!("Interface size:"), |ui| {
+            egui::ComboBox::from_id_salt("interface_size").selected_text(selected).width(220.0).show_ui(ui, |ui| {
+                if ui.selectable_label(size.is_auto(), auto).clicked() {
+                    let _ = app.run("ui.interfaceSize", json!({"value": "auto"}));
                 }
-            }
+                for pct in InterfaceSize::PRESETS {
+                    if ui.selectable_label(size.percent() == Some(pct), format!("{pct}%")).clicked() {
+                        let _ = app.run("ui.interfaceSize", json!({"percent": pct}));
+                    }
+                }
+            })
         });
     });
     ui.label(
@@ -600,13 +614,14 @@ fn interface_size_picker(app: &mut WordApp, ui: &mut Ui) {
 fn animations_picker(app: &mut WordApp, ui: &mut Ui) {
     use crate::theme::Animations;
     ui.horizontal(|ui| {
-        ui.label(tl!("Animation effects:"));
-        egui::ComboBox::from_id_salt("animation_effects").selected_text(tl!(app.ui.animations.label())).width(220.0).show_ui(ui, |ui| {
-            for a in Animations::ALL {
-                if ui.selectable_label(app.ui.animations == a, tl!(a.label())).clicked() {
-                    let _ = app.run("ui.animations", json!({"value": a.code()}));
+        crate::widgets::labelled(ui, tl!("Animation effects:"), |ui| {
+            egui::ComboBox::from_id_salt("animation_effects").selected_text(tl!(app.ui.animations.label())).width(220.0).show_ui(ui, |ui| {
+                for a in Animations::ALL {
+                    if ui.selectable_label(app.ui.animations == a, tl!(a.label())).clicked() {
+                        let _ = app.run("ui.animations", json!({"value": a.code()}));
+                    }
                 }
-            }
+            })
         });
     });
     note(ui, "Smooth scrolling and zooming, and menus and buttons that fade in. Off shows every change at once.");
@@ -627,16 +642,17 @@ fn language_picker(app: &mut WordApp, ui: &mut Ui) {
     let auto_label = crate::i18n::fmt(tl!("Automatic ({language})"), &[("language", system.name())]);
     let current = if app.ui.language == AUTO { auto_label.clone() } else { Lang::from_pref(&app.ui.language).name().to_string() };
     ui.horizontal(|ui| {
-        ui.label(tl!("Interface language:"));
-        egui::ComboBox::from_id_salt("interface_language").selected_text(current).width(220.0).show_ui(ui, |ui| {
-            if ui.selectable_label(app.ui.language == AUTO, auto_label.as_str()).clicked() {
-                let _ = app.run("ui.language", json!({"value": AUTO}));
-            }
-            for lang in Lang::all() {
-                if ui.selectable_label(app.ui.language == lang.code(), lang.name()).clicked() {
-                    let _ = app.run("ui.language", json!({"value": lang.code()}));
+        crate::widgets::labelled(ui, tl!("Interface language:"), |ui| {
+            egui::ComboBox::from_id_salt("interface_language").selected_text(current).width(220.0).show_ui(ui, |ui| {
+                if ui.selectable_label(app.ui.language == AUTO, auto_label.as_str()).clicked() {
+                    let _ = app.run("ui.language", json!({"value": AUTO}));
                 }
-            }
+                for lang in Lang::all() {
+                    if ui.selectable_label(app.ui.language == lang.code(), lang.name()).clicked() {
+                        let _ = app.run("ui.language", json!({"value": lang.code()}));
+                    }
+                }
+            })
         });
     });
     ui.label(RichText::new(tl!("Automatic follows your system's language. Menus and commands change; your documents don't.")).small().weak());
@@ -712,13 +728,18 @@ fn default_app_button(app: &mut WordApp, ui: &mut Ui) {
 fn numeral_picker(app: &mut WordApp, ui: &mut Ui) {
     use wordcraft_layout::NumeralMode;
     ui.horizontal(|ui| {
-        ui.label(tl!("Numerals:"));
+        let label_id = ui.label(tl!("Numerals:")).id;
         let mut sel = app.session.view.numeral;
-        egui::ComboBox::from_id_salt("numerals").selected_text(tl!(sel.label())).width(220.0).show_ui(ui, |ui| {
-            for m in [NumeralMode::Arabic, NumeralMode::Hindi, NumeralMode::Context, NumeralMode::System] {
-                ui.selectable_value(&mut sel, m, tl!(m.label()));
-            }
-        });
+        egui::ComboBox::from_id_salt("numerals")
+            .selected_text(tl!(sel.label()))
+            .width(220.0)
+            .show_ui(ui, |ui| {
+                for m in [NumeralMode::Arabic, NumeralMode::Hindi, NumeralMode::Context, NumeralMode::System] {
+                    ui.selectable_value(&mut sel, m, tl!(m.label()));
+                }
+            })
+            .response
+            .labelled_by(label_id);
         if sel != app.session.view.numeral {
             let _ = app.run("view.numeral", json!({ "value": sel }));
         }

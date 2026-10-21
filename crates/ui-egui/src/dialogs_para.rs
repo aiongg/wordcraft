@@ -313,8 +313,9 @@ pub fn tabs(app: &mut WordApp, ui: &mut Ui, f: &mut TabsForm) -> bool {
         ui.add_space(12.0);
         ui.vertical(|ui| {
             ui.set_min_width(130.0);
-            ui.label(tl!("Default tab stops:"));
-            ui.add(egui::DragValue::new(&mut f.default_tab).speed(0.05).range(1.0 / k..=1584.0 / k).measure(u).max_decimals(2));
+            crate::widgets::labelled(ui, tl!("Default tab stops:"), |ui| {
+                ui.add(egui::DragValue::new(&mut f.default_tab).speed(0.05).range(1.0 / k..=1584.0 / k).measure(u).max_decimals(2))
+            });
             ui.add_space(8.0);
             ui.label(tl!("Tab stops to be cleared:"));
             let list = if f.clear_all {
@@ -620,24 +621,30 @@ fn lines(ui: &mut Ui, id: &str, l: &mut LineForm, theme: &[Rgb], fill: Option<Rg
         });
         ui.add_space(8.0);
         ui.vertical(|ui| {
-            ui.label(tl!("Style:"));
+            let label_id = ui.label(tl!("Style:")).id;
             let current = STYLES.iter().find(|(s, _)| *s == l.style).map(|(_, n)| *n).unwrap_or("Single");
-            egui::ComboBox::from_id_salt((id, "style")).selected_text(tl!(current)).width(120.0).show_ui(ui, |ui| {
-                for (s, n) in STYLES {
-                    ui.selectable_value(&mut l.style, s, tl!(n));
-                }
-            });
-            ui.label(tl!("Color:"));
-            color_menu(ui, theme, &mut l.color);
-            ui.label(tl!("Width:"));
-            egui::ComboBox::from_id_salt((id, "width"))
-                .selected_text(crate::i18n::fmt(tl!("{n} pt"), &[("n", &l.width.to_string())]))
+            egui::ComboBox::from_id_salt((id, "style"))
+                .selected_text(tl!(current))
                 .width(120.0)
                 .show_ui(ui, |ui| {
-                    for w in WIDTHS {
-                        ui.selectable_value(&mut l.width, w, crate::i18n::fmt(tl!("{n} pt"), &[("n", &w.to_string())]));
+                    for (s, n) in STYLES {
+                        ui.selectable_value(&mut l.style, s, tl!(n));
                     }
-                });
+                })
+                .response
+                .labelled_by(label_id);
+            ui.label(tl!("Color:"));
+            color_menu(ui, theme, &mut l.color);
+            crate::widgets::labelled(ui, tl!("Width:"), |ui| {
+                egui::ComboBox::from_id_salt((id, "width"))
+                    .selected_text(crate::i18n::fmt(tl!("{n} pt"), &[("n", &l.width.to_string())]))
+                    .width(120.0)
+                    .show_ui(ui, |ui| {
+                        for w in WIDTHS {
+                            ui.selectable_value(&mut l.width, w, crate::i18n::fmt(tl!("{n} pt"), &[("n", &w.to_string())]));
+                        }
+                    })
+            });
         });
         ui.add_space(8.0);
         ui.vertical(|ui| {
