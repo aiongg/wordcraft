@@ -3017,7 +3017,7 @@ mod tests {
         app.run("layout.orientation", json!({"value": "landscape"})).unwrap();
         app.run("layout.size", json!({"name": "A4"})).unwrap();
         app.run("layout.columns", json!({"preset": "right"})).unwrap();
-        let mut h = egui_kittest::Harness::builder().with_size(vec2(400.0, 1200.0)).build_ui_state(
+        let mut h = crate::theme::harness().with_size(vec2(400.0, 1200.0)).build_ui_state(
             |ui, app: &mut WordApp| {
                 margins_items(ui, app);
                 orientation_items(ui, app);
@@ -3316,8 +3316,7 @@ mod tests {
         use egui_kittest::kittest::{By, NodeT, Queryable};
         let item = |label: &'static str| By::new().label_contains(label);
         let app = WordApp::new(Session::new(wordcraft_doc::Document::from_text("Bonjour")), crate::Services::default());
-        let mut h =
-            egui_kittest::Harness::builder().with_size(vec2(400.0, 400.0)).build_ui_state(|ui, app: &mut WordApp| language_menu(ui, app), app);
+        let mut h = crate::theme::harness().with_size(vec2(400.0, 400.0)).build_ui_state(|ui, app: &mut WordApp| language_menu(ui, app), app);
         h.run();
         assert!(h.query(item("French (France)")).is_none(), "the short list only, on an English document");
         assert!(!h.get(item("Set Proofing Language…")).accesskit_node().is_disabled(), "never greyed out on a fresh document");

@@ -510,6 +510,13 @@ pub fn font_definitions() -> FontDefinitions {
     font_stack("en", &[]).flat_definitions()
 }
 
+/// A kittest harness builder with the English interface fonts, for tests that draw parts of the
+/// interface without running the app (the app installs its fonts on its first frame).
+#[cfg(test)]
+pub(crate) fn harness<State>() -> egui_kittest::HarnessBuilder<State> {
+    egui_kittest::Harness::builder().with_context_setup(install_fonts)
+}
+
 /// Install the English interface fonts. The new fonts apply from the next frame.
 pub fn install_fonts(ctx: &egui::Context) {
     install_fonts_language(ctx, "en", &[]);
@@ -872,11 +879,17 @@ mod tests {
         }
     }
 
-    /// Symbols written as text in the interface code must exist in the interface fonts (Inter and
-    /// egui's emoji fallbacks); a missing glyph draws as an empty box, as the panes' "✕" close
-    /// button once did. Letters are the catalogs' business (see the i18n font tests).
+    /// Symbols written as text in the interface code, and the AutoCorrect replacements its list
+    /// shows (☹), must exist in the interface fonts in every text weight: Inter, egui's Hack, and
+    /// craft-fonts' Symbols, Symbols 2 and Math. A missing glyph draws as an empty box, as the
+    /// panes' "✕" close button once did. Letters are the catalogs' business (see the i18n font
+    /// tests).
     #[test]
     fn interface_symbols_have_glyphs() {
+        if wordcraft_fonts::CRAFT_FONTS.is_empty() {
+            eprintln!("skipped: built without craft-fonts (set CRAFT_FONTS_DIR to a checkout)");
+            return;
+        }
         let ctx = egui::Context::default();
         ctx.set_fonts(super::font_definitions());
         ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
@@ -910,9 +923,17 @@ mod tests {
             _ => false,
         };
         symbols.retain(|(c, file)| !exempt(*c, file));
-        let font = super::regular(12.5);
-        let missing: Vec<String> = ctx.fonts_mut(|f| {
-            symbols.iter().filter(|(c, _)| !f.has_glyph(&font, *c)).map(|(c, file)| format!("{c} U+{:04X} in {file}", *c as u32)).collect()
+        for (_, to) in wordcraft_engine::cmd::tools::AUTOCORRECT {
+            symbols.extend(to.chars().filter(|c| !c.is_ascii() && !c.is_alphabetic()).map(|c| (c, "AutoCorrect".to_string())));
+        }
+        let fonts = [super::regular(12.5), super::medium(12.5), super::semibold(12.5)];
+        let mut missing = Vec::new();
+        ctx.fonts_mut(|f| {
+            for (c, file) in &symbols {
+                for font in fonts.iter().filter(|font| !f.has_glyph(font, *c)) {
+                    missing.push(format!("{c} U+{:04X} in {file} ({:?})", *c as u32, font.family));
+                }
+            }
         });
         assert!(missing.is_empty(), "symbols without a glyph: {missing:#?}");
     }

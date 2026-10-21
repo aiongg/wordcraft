@@ -4955,7 +4955,7 @@ mod tests {
     #[test]
     fn more_paper_sizes_opens_page_setup() {
         use egui_kittest::kittest::Queryable;
-        let mut h = egui_kittest::Harness::builder()
+        let mut h = crate::theme::harness()
             .with_size(egui::vec2(400.0, 600.0))
             .build_ui_state(|ui, app: &mut WordApp| crate::ribbon::size_menu(ui, app), app_with("Page"));
         h.run_steps(2);
