@@ -364,6 +364,13 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
                 }
             }
             egui::Event::Ime(egui::ImeEvent::DeleteSurrounding { before_chars, after_chars }) => delete_surrounding(app, before_chars, after_chars),
+            // macOS press-and-hold and Wayland input methods replace the text before the caret
+            // ("e" with "è") in byte counts: whole characters, joined with the commit that follows.
+            egui::Event::Ime(egui::ImeEvent::DeleteSurroundingBytes { before_bytes, after_bytes }) => {
+                let (before, after) = surrounding_text(app);
+                let (b, a) = craft_ui::ime::surrounding_chars(&before, &after, before_bytes, after_bytes);
+                delete_surrounding(app, b, a);
+            }
             egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => app.canvas.ime_preedit = text,
             egui::Event::Ime(egui::ImeEvent::Commit(text)) => {
                 app.canvas.ime_preedit.clear();
@@ -646,6 +653,13 @@ fn delete_surrounding(app: &mut WordApp, before: usize, after: usize) {
         // Refused (a protected document): leave the caret where it was.
         app.session.sel = wordcraft_engine::Selection::caret(caret);
     }
+}
+
+/// The caret's paragraph text before and after it, for an input method's surrounding-text edits.
+fn surrounding_text(app: &WordApp) -> (String, String) {
+    let f = &app.session.sel.focus;
+    let text = app.session.doc.para_at(f).map(|p| p.text.as_str()).unwrap_or_default();
+    (text.get(..f.off).unwrap_or_default().to_string(), text.get(f.off..).unwrap_or_default().to_string())
 }
 
 /// Text arriving right after an Alt code typed `echo` (no key pressed between): whether it was
@@ -993,6 +1007,28 @@ mod tests {
 
     fn surround(before_chars: usize, after_chars: usize) -> egui::Event {
         egui::Event::Ime(egui::ImeEvent::DeleteSurrounding { before_chars, after_chars })
+    }
+
+    /// macOS press-and-hold: the input method replaces the typed "e" with "è" by deleting its bytes
+    /// before the caret and committing the accent. One letter remains, and one undo removes it.
+    #[test]
+    fn press_and_hold_accent_replaces_the_letter() {
+        let (ctx, mut a) = alt_frame_app();
+        alt_frame(&ctx, &mut a, vec![egui::Event::Text("né".into())]);
+        alt_frame(
+            &ctx,
+            &mut a,
+            vec![
+                egui::Event::Ime(egui::ImeEvent::DeleteSurroundingBytes { before_bytes: 2, after_bytes: 0 }),
+                egui::Event::Ime(egui::ImeEvent::Commit("è".into())),
+            ],
+        );
+        assert_eq!(body(&a), "nè");
+        // A count that ends inside a character deletes only whole ones.
+        alt_frame(&ctx, &mut a, vec![egui::Event::Ime(egui::ImeEvent::DeleteSurroundingBytes { before_bytes: 1, after_bytes: 0 })]);
+        assert_eq!(body(&a), "nè");
+        a.run("edit.undo", json!({})).unwrap();
+        assert_eq!(body(&a), "", "the accent joins the typing it replaced");
     }
 
     /// The web's text agent keeps what it typed and, when its value changes other than by an
