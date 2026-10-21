@@ -111,7 +111,9 @@ pub(crate) fn list(ui: &mut Ui, id: &str, size: egui::Vec2, rows: &[(String, Str
             ui.centered_and_justified(|ui| ui.label(egui::RichText::new(tl!("(none)")).weak()));
             return;
         }
-        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 4.0;
+        // A button is never shorter than the interact size: rows taller than `show_rows` assumes
+        // push the last one past the end of the list, out of view.
+        let row_h = (ui.text_style_height(&egui::TextStyle::Body) + 4.0).max(ui.spacing().interact_size.y);
         // Bring the selected row into view when the selection (or the list) changes, so the row
         // an action targets is never off-screen; scrolling by hand doesn't change the selection.
         let seen = ui.make_persistent_id(("scrolled_to", id));
