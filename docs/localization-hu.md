@@ -73,5 +73,5 @@ Hungarian proofing. A native-speaker review of the catalog is welcome.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-23 | trivial | The interface audit lists Hungarian strings the catalog lacks; a missing entry no longer fails CI |
+| 2026-10-23 | trivial | The interface audit lists Hungarian strings the catalog lacks; a missing entry doesn't fail the audit |
 | 2026-10-11 | minor | Hungarian catalog (2,419 entries: built-in style names, equation gallery, citation styles), conventions, terminology, scope and regression checks |

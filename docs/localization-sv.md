@@ -94,5 +94,5 @@ Swedish proofing.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-23 | trivial | The interface audit lists Swedish strings the catalog lacks; a missing entry no longer fails CI |
+| 2026-10-23 | trivial | The interface audit lists Swedish strings the catalog lacks; a missing entry doesn't fail the audit |
 | 2026-10-13 | minor | Swedish catalog (2,504 entries), conventions, terminology, known compromises and regression checks |
