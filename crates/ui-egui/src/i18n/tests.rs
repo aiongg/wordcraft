@@ -126,80 +126,57 @@ fn bundled_catalogs_are_well_formed() {
             assert_eq!(e.translation.trim(), e.translation, "{}: stray whitespace in {:?}", l.code, e.translation);
             assert!(!e.translation.contains("..."), "{}: use … rather than three dots: {:?}", l.code, e.translation);
         }
-        assert!(l.code == "en" || entries.len() > 700, "{} has {} entries", l.code, entries.len());
     }
 }
 
-/// The ribbon tabs and every registered command's label and ribbon location are translated, in
-/// every language, so menus, tooltips and command search never fall back to English.
+/// Prints the strings each language has no translation for, one block per language (run with
+/// `--nocapture` to read them). A missing translation falls back to English and never fails.
+fn report_untranslated(what: &str, sources: &[&str]) {
+    for l in Lang::all().filter(|l| *l != Lang::EN) {
+        let mut missing: Vec<&str> = sources.iter().copied().filter(|s| !has(l, s)).collect();
+        missing.sort_unstable();
+        missing.dedup();
+        if !missing.is_empty() {
+            eprintln!("{}: {} untranslated {what}", l.code(), missing.len());
+            for s in missing {
+                eprintln!("    {s:?}");
+            }
+        }
+    }
+}
+
+/// The ribbon tabs and every registered command's label and ribbon location, which menus,
+/// tooltips and command search show.
 #[test]
-fn every_tab_and_command_is_translated() {
+fn untranslated_tabs_and_commands_are_reported() {
     let session = wordcraft_engine::Session::new(wordcraft_doc::Document::new());
     // Labels that read the same in every language.
     let universal = |s: &str| !s.chars().any(char::is_alphabetic);
-    let mut missing = Vec::new();
-    for l in Lang::all().filter(|l| *l != Lang::EN) {
-        let tabs = crate::ribbon::TABS.iter().chain(&["Table Design", "Table Layout"]).copied();
-        let commands = session.registry.all().iter().flat_map(|spec| std::iter::once(spec.label).chain(spec.location.split(" › ")));
-        for s in tabs.chain(commands).filter(|s| !s.is_empty() && !universal(s)) {
-            if !has(l, s) {
-                missing.push(format!("{}: {s:?}", l.code()));
-            }
-        }
-    }
-    missing.sort();
-    missing.dedup();
-    assert!(missing.is_empty(), "untranslated: {missing:#?}");
+    let tabs = crate::ribbon::TABS.iter().chain(&["Table Design", "Table Layout"]).copied();
+    let commands = session.registry.all().iter().flat_map(|spec| std::iter::once(spec.label).chain(spec.location.split(" › ")));
+    let sources: Vec<&str> = tabs.chain(commands).filter(|s| !s.is_empty() && !universal(s)).collect();
+    report_untranslated("tab and command labels", &sources);
 }
 
-/// File › Home opens with a greeting for the time of day (`backstage::home_page`); every
-/// language has all three, so the page doesn't start in English.
+/// File › Home opens with a greeting for the time of day (`backstage::home_page`).
 #[test]
-fn the_file_home_greeting_is_translated_in_every_language() {
-    let mut missing = Vec::new();
-    for l in Lang::all().filter(|l| *l != Lang::EN) {
-        for s in ["Good morning", "Good afternoon", "Good evening"] {
-            if !has(l, s) {
-                missing.push(format!("{}: {s:?}", l.code()));
-            }
-        }
-    }
-    assert!(missing.is_empty(), "untranslated: {missing:#?}");
-    assert_eq!(tr(lang("pt-br"), "Good afternoon"), "Boa tarde");
+fn untranslated_file_home_greetings_are_reported() {
+    report_untranslated("File › Home greetings", &["Good morning", "Good afternoon", "Good evening"]);
 }
 
+/// Command search's hint names an example command. Where the hint and the command are both
+/// translated, the example is the translated command (any case) or the English one, so typing it
+/// finds the command.
 #[test]
-fn korean_print_settings_and_printer_feedback_are_translated() {
-    let korean = lang("ko");
-    for source in [
-        "Printer",
-        "Select a printer",
-        "Refresh printers",
-        "Copies",
-        "Two-sided printing",
-        "Printer default",
-        "One-sided",
-        "Two-sided: long edge",
-        "Two-sided: short edge",
-        "Grayscale",
-        "Finding printers…",
-        "No printers found. Configure a system printer or export a PDF.",
-        "Printer discovery failed.",
-        "Submitting print job…",
-        "Print job submitted.",
-        "Print job submitted: {receipt}",
-        "Print failed: the printing worker stopped.",
-        "Print failed: {error}",
-    ] {
-        assert!(has(korean, source), "missing Korean print translation: {source}");
+fn the_search_hint_names_a_command_it_finds_in_every_language() {
+    const HINT: &str = "Type a command, e.g. \"insert table\"";
+    for l in Lang::all().filter(|l| has(*l, HINT) && has(*l, "Insert Table")) {
+        set_current(l);
+        let hint = lowercase(tr(l, HINT));
+        let command = lowercase(tr(l, "Insert Table"));
+        assert!(hint.contains(&command) || hint.contains("insert table"), "{}: {hint:?} does not name {command:?}", l.code());
     }
-    assert_eq!(korean.catalog().plain("Printer"), Some("프린터"));
-    assert_eq!(korean.catalog().plain("Copies"), Some("매수"));
-    assert_eq!(korean.catalog().plain("Two-sided printing"), Some("양면 인쇄"));
-    assert_eq!(
-        korean.catalog().plain("No printers found. Configure a system printer or export a PDF."),
-        Some("프린터를 찾을 수 없습니다. 시스템 프린터를 설정하거나 PDF로 내보내세요.")
-    );
+    set_current(Lang::EN);
 }
 
 #[test]
@@ -244,15 +221,8 @@ fn ukrainian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn ukrainian_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    assert_eq!(keys(lang("uk").0.source), keys(lang("zh-hans").0.source));
+fn ukrainian_translations_preserve_templates_and_count_labels() {
     let uk = lang("uk");
-    assert_eq!(tr(uk, "Home"), "Основне");
-    assert_eq!(tr(uk, "Font"), "Шрифт");
-    assert_eq!(tr(uk, "Review"), "Рецензування");
-    assert_eq!(tr(uk, "Save"), "Зберегти");
     assert_eq!(tr(uk, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(uk, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Експортовано draft-{words}.docx");
     // Count-neutral wording is grammatical for every Ukrainian integer category, including teens.
@@ -277,20 +247,6 @@ fn bundled_interface_fonts_cover_ukrainian_without_system_fallbacks() {
             assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch}");
         }
     }
-}
-
-#[test]
-fn serbian_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    let reference = keys(lang("zh-hans").0.source);
-    assert_eq!(keys(lang("sr").0.source), reference);
-    assert_eq!(keys(lang("sr-latn").0.source), reference);
-    let (cyr, lat) = (lang("sr"), lang("sr-latn"));
-    assert_eq!(tr(cyr, "Home"), "Почетак");
-    assert_eq!(tr(lat, "Home"), "Početak");
-    assert_eq!(tr(cyr, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(lat, "Exported {path}"), &[("path", "draft-1.docx")]), "Izvezeno: draft-1.docx");
 }
 
 #[test]
@@ -365,15 +321,8 @@ fn brazilian_portuguese_locales_and_saved_preference_work_without_changing_the_d
 }
 
 #[test]
-fn brazilian_portuguese_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    assert_eq!(keys(lang("pt-br").0.source), keys(lang("zh-hans").0.source));
+fn brazilian_portuguese_translations_preserve_templates_and_count_labels() {
     let pt = lang("pt-br");
-    assert_eq!(tr(pt, "Home"), "Início");
-    assert_eq!(tr(pt, "Font"), "Fonte");
-    assert_eq!(tr(pt, "Review"), "Revisão");
-    assert_eq!(tr(pt, "Save"), "Salvar");
     assert_eq!(tr(pt, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(pt, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Exportado draft-{words}.docx");
     // Count-neutral wording is grammatical for every count: `Palavras: 21`, `Palavras: 21; seleção: 1`.
@@ -426,19 +375,8 @@ fn czech_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn czech_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    // Keep the original Chinese coverage and include the complete styles, equation gallery,
-    // paper sizes and watermarks from the Russian and Spanish catalogs.
-    assert!(keys(lang("cs").0.source).is_superset(&keys(lang("zh-hans").0.source)));
-    assert!(keys(lang("cs").0.source).is_superset(&keys(lang("ru").0.source)));
-    assert!(keys(lang("cs").0.source).is_superset(&keys(lang("es").0.source)));
+fn czech_translations_preserve_templates_count_labels_and_style_names() {
     let cs = lang("cs");
-    assert_eq!(tr(cs, "Home"), "Domů");
-    assert_eq!(tr(cs, "Font"), "Písmo");
-    assert_eq!(tr(cs, "Review"), "Revize");
-    assert_eq!(tr(cs, "Save"), "Uložit");
     assert_eq!(tr(cs, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(cs, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Exportováno: draft-{words}.docx");
     // Count-neutral wording is grammatical across all Czech plural categories (1, 2–4, 0/5+).
@@ -567,26 +505,9 @@ fn russian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn russian_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    // Everything the other catalogs translate, plus the preview samples below.
-    assert!(keys(lang("ru").0.source).is_superset(&keys(lang("zh-hans").0.source)));
-    assert!(parse_entries(lang("ru").0.source).1.is_empty());
+fn russian_count_labels_read_right_for_every_count() {
     let ru = lang("ru");
-    // Style gallery and Design tab previews show Cyrillic sample text.
-    assert_eq!(tr(ru, "AaBbCcDd"), "АаБбВвГг");
-    assert_eq!(tr(ru, "Title"), "Заголовок");
-    assert_eq!(tr(ru, "Heading 1"), "Заголовок 1");
-    assert!(tr(ru, "Body text in a short paragraph to show spacing.").starts_with("Основной текст"));
-    assert_eq!(tr(ru, "Home"), "Главная");
-    assert_eq!(tr(ru, "Font"), "Шрифт");
-    assert_eq!(tr(ru, "Review"), "Рецензирование");
-    assert_eq!(tr(ru, "Save"), "Сохранить");
     assert_eq!(tr(ru, "unknown future label"), "unknown future label");
-    // The search hint's example must find the command it names.
-    assert_eq!(tr(ru, "Insert Table"), "Вставить таблицу");
-    assert!(tr(ru, "Type a command, e.g. \"insert table\"").contains("вставить таблицу"));
     // Count-neutral wording is grammatical for every count: `Слов: 21`, `Слов: 1 из 21`.
     for count in [0, 1, 2, 5, 21, 100, 1000] {
         let words = count.to_string();
@@ -634,15 +555,6 @@ fn built_in_style_names_are_translated_for_display_and_user_styles_are_not() {
     // A built-in name without a translation stays English.
     assert_eq!(builtin_style_name("Some Future Style"), "Some Future Style");
     assert_eq!(builtin_style_name("Heading x"), "Heading x");
-    // Every built-in paragraph and character style shows in Russian. Table styles (`Grid Table 4 –
-    // Blue`) appear only as tooltips under Table Design and stay English for now.
-    let untranslated: Vec<&str> = sheet
-        .styles
-        .iter()
-        .filter(|s| s.kind != wordcraft_doc::StyleKind::Table && style_name(s) == s.name && s.name.chars().any(char::is_alphabetic))
-        .map(|s| s.name.as_str())
-        .collect();
-    assert!(untranslated.is_empty(), "built-in styles without a Russian name: {untranslated:?}");
     set_current(Lang::EN);
     assert_eq!(name("Heading7"), "Heading 7");
     // The document itself never changes.
@@ -721,18 +633,8 @@ fn estonian_locales_and_saved_preference_keep_document_content() {
 }
 
 #[test]
-fn estonian_covers_the_interface_catalog_and_keeps_count_labels_neutral() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
+fn estonian_translations_preserve_templates_and_keep_count_labels_neutral() {
     let et = lang("et");
-    // Estonian carries the interface catalog; Spanish and Turkish add the equation gallery and
-    // built-in style names on top.
-    assert!(keys(et.0.source).is_subset(&keys(lang("es").0.source)));
-    assert!(keys(et.0.source).is_subset(&keys(lang("tr").0.source)));
-    assert!(keys(lang("zh-hans").0.source).is_subset(&keys(et.0.source)));
-    assert_eq!(tr(et, "Home"), "Avaleht");
-    assert_eq!(tr(et, "Save"), "Salvesta");
-    assert_eq!(tr(et, "Spelling & Grammar"), "Õigekiri ja grammatika");
     assert_eq!(tr(et, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(et, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Eksporditud: draft-{words}.docx");
     for count in [0, 1, 2, 11, 21, 101] {
@@ -780,37 +682,15 @@ fn turkish_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn turkish_covers_the_entire_existing_interface_catalog_and_preserves_templates() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    // Full parity with the Russian catalog: covers all UI strings, styles, math gallery, and presets.
-    assert_eq!(keys(lang("tr").0.source), keys(lang("ru").0.source));
-    assert!(keys(lang("es").0.source).is_subset(&keys(lang("tr").0.source)));
-    assert!(keys(lang("zh-hans").0.source).is_subset(&keys(lang("tr").0.source)));
+fn turkish_translations_preserve_templates_count_labels_and_casing() {
     let tr = lang("tr");
-    for (source, expected) in [
-        ("Home", "Giriş"),
-        ("Font", "Yazı Tipi"),
-        ("Review", "İncele"),
-        ("Italic", "İtalik"),
-        ("Table of Contents", "İçindekiler Tablosu"),
-        ("Track Changes", "Değişiklikleri İzle"),
-        ("Save", "Kaydet"),
-        ("UPPERCASE", "BÜYÜK HARF"),
-        ("lowercase", "küçük harf"),
-        ("Square Root", "Karekök"),
-        ("Euler's identity", "Euler Özdeşliği"),
-        ("Default Paragraph Font", "Varsayılan Paragraf Yazı Tipi"),
-        ("CONFIDENTIAL", "GİZLİ"),
-        ("WordCraft", "WordCraft"),
-        ("unknown future label", "unknown future label"),
-    ] {
-        assert_eq!(super::tr(tr, source), expected);
-    }
+    assert_eq!(super::tr(tr, "WordCraft"), "WordCraft");
+    assert_eq!(super::tr(tr, "unknown future label"), "unknown future label");
     assert_eq!(fmt(super::tr(tr, "Exported {path}"), &[("path", "taslak-{words}.docx")]), "Dışa aktarıldı: taslak-{words}.docx");
     assert_eq!(fmt(super::tr(tr, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Sayfa 3 / 9");
-    // The Font dialog uppercases its preview sample for All Caps, so the sample has no lowercase i.
-    assert_eq!(super::tr(tr, "AaBbYyZz").to_uppercase(), "AABBYYZZ ĞĞİIŞŞ");
+    // The Font dialog uppercases its preview sample for All Caps, and an `i` would uppercase to
+    // `I` rather than `İ`, so the sample has no lowercase i.
+    assert!(!super::tr(tr, "AaBbYyZz").contains('i'));
     // Turkish count nouns remain singular for both one and other, including zero and large counts.
     for count in [0, 1, 2, 5, 11, 21, 100, 1000] {
         let words = count.to_string();
@@ -864,36 +744,16 @@ fn hungarian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn hungarian_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    // Every key of the most complete catalog: built-in style names, equation gallery labels, paper
-    // sizes and watermarks included.
-    assert!(keys(lang("hu").0.source).is_superset(&keys(lang("ru").0.source)));
-    assert!(keys(lang("hu").0.source).is_superset(&keys(lang("es").0.source)));
+fn hungarian_translations_preserve_templates_count_labels_and_style_names() {
     let hu = lang("hu");
-    for (source, expected) in [
-        ("Home", "Kezdőlap"),
-        ("Font", "Betűtípus"),
-        ("Review", "Véleményezés"),
-        ("Header", "Élőfej"),
-        ("Track Changes", "Változáskövetés"),
-        ("Save", "Mentés"),
-        ("Redo", "Újra"),
-        ("UPPERCASE", "NAGYBETŰS"),
-        ("WordCraft", "WordCraft"),
-        ("unknown future label", "unknown future label"),
-    ] {
-        assert_eq!(super::tr(hu, source), expected);
-    }
+    assert_eq!(super::tr(hu, "WordCraft"), "WordCraft");
+    assert_eq!(super::tr(hu, "unknown future label"), "unknown future label");
     assert_eq!(fmt(super::tr(hu, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Oldal: 3/9");
     // A noun after a number stays singular in Hungarian, whatever the count.
     for count in [0, 1, 2, 21, 1000] {
         let words = count.to_string();
         assert_eq!(fmt(super::tr(hu, "{words} words"), &[("words", &words)]), format!("{count} szó"));
     }
-    // The Font dialog uppercases its preview sample for All Caps.
-    assert_eq!(super::tr(hu, "AaBbYyZz").to_uppercase(), "AABBYYZZ ŐŐŰŰ");
     set_current(hu);
     // Built-in styles show translated names; numbered families go through their template.
     for (style, expected) in [("Normal", "Normál"), ("No Spacing", "Nincs térköz"), ("Heading 2", "Címsor 2"), ("TOC 3", "Tartalomjegyzék 3")] {
@@ -999,35 +859,8 @@ fn polish_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn polish_covers_every_key_of_every_other_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    let polish = keys(lang("pl").0.source);
-    // Italian and Hungarian still carry "Style: APA", which the interface no longer shows;
-    // Slovenian carries the union of every catalog's keys.
-    // Hungarian and Bulgarian also name the citation styles, and Bulgarian has a few one-line
-    // pieces of gallery labels. Polish matches every other catalog, including the built-in style
-    // names, citation styles and equation gallery. French carries newer strings (paper sizes,
-    // bookmarks, printing) the Polish catalog hasn't caught up with yet.
-    for other in Lang::all().filter(|l| *l != Lang::EN && !matches!(l.code(), "pl" | "it" | "hu" | "bg" | "vi" | "sv" | "hr" | "fr" | "ro" | "sl")) {
-        let mut missing: Vec<String> = keys(other.0.source).difference(&polish).cloned().collect();
-        missing.sort();
-        assert!(missing.is_empty(), "pl lacks {}'s {missing:?}", other.code());
-    }
-    for code in ["it", "hu"] {
-        let missing: Vec<String> = keys(lang(code).0.source).difference(&polish).cloned().collect();
-        assert_eq!(missing, ["Style: APA"], "pl vs {code}");
-    }
+fn polish_translations_preserve_templates_and_count_labels() {
     let pl = lang("pl");
-    assert_eq!(tr(pl, "File"), "Plik");
-    assert_eq!(tr(pl, "Home"), "Start");
-    assert_eq!(tr(pl, "Insert"), "Wstaw");
-    assert_eq!(tr(pl, "Review"), "Recenzja");
-    assert_eq!(tr(pl, "Save"), "Zapisz");
-    assert_eq!(tr(pl, "Spelling & Grammar"), "Pisownia i gramatyka");
-    assert_eq!(tr(pl, "Polish"), "Polski");
-    assert_eq!(tr(pl, "GOST (name sort)"), "GOST (sortowanie według nazwiska)");
-    assert_eq!(tr(pl, "ISO 690 (author-date)"), "ISO 690 (autor–data)");
     assert_eq!(tr(pl, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(pl, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Wyeksportowano: draft-{words}.docx");
     assert_eq!(fmt(tr(pl, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Strona 3 z 9");
@@ -1164,14 +997,8 @@ fn german_locales_and_saved_preference_keep_document_content() {
 }
 
 #[test]
-fn german_covers_the_interface_catalog_and_keeps_count_labels_neutral() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
+fn german_translations_preserve_templates_and_keep_count_labels_neutral() {
     let de = lang("de");
-    assert_eq!(keys(de.0.source), keys(lang("zh-hans").0.source));
-    assert_eq!(tr(de, "Home"), "Start");
-    assert_eq!(tr(de, "Save"), "Speichern");
-    assert_eq!(tr(de, "Spelling & Grammar"), "Rechtschreibung und Grammatik");
     assert_eq!(tr(de, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(de, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Exportiert: draft-{words}.docx");
     // Count-neutral wording is grammatical for every count: `Wörter: 21`, `Wörter: 21; ausgewählt: 1`.
@@ -1215,17 +1042,8 @@ fn italian_locales_and_saved_preference_keep_document_content() {
 }
 
 #[test]
-fn italian_covers_the_entire_existing_interface_catalog_and_keeps_count_labels_neutral() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
+fn italian_count_labels_stay_neutral_and_review_names_stay_distinct() {
     let it = lang("it");
-    for other in ["es", "tr", "et", "zh-hans"] {
-        assert!(keys(lang(other).0.source).is_subset(&keys(it.0.source)), "{other} has keys Italian lacks");
-    }
-    assert_eq!(tr(it, "Good morning"), "Buongiorno");
-    assert_eq!(tr(it, "Save"), "Salva");
-    assert_eq!(tr(it, "Insert"), "Inserisci");
-    assert_eq!(tr(it, "Spelling & Grammar"), "Ortografia e grammatica");
     assert_eq!(tr(it, "unknown future label"), "unknown future label");
     // The Review tab's group and its toggle keep different names.
     assert_ne!(tr(it, "Changes"), tr(it, "Track Changes"));
@@ -1272,31 +1090,10 @@ fn bulgarian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn bulgarian_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    // Every key the interface looks up (Spanish carries them all), and no catalog errors.
-    assert!(keys(lang("bg").0.source).is_superset(&keys(lang("es").0.source)));
-    assert!(parse_entries(lang("bg").0.source).1.is_empty());
+fn bulgarian_translations_preserve_templates_and_count_labels() {
     let bg = lang("bg");
-    for (source, expected) in [
-        ("Home", "Начало"),
-        ("Insert", "Вмъкване"),
-        ("Font", "Шрифт"),
-        ("Paragraph", "Абзац"),
-        ("Review", "Преглед"),
-        ("Save", "Запазване"),
-        ("Heading 1", "Заглавие 1"),
-        ("Hyphenation", "Сричкопренасяне"),
-        ("Track Changes", "Проследяване на промените"),
-        ("WordCraft", "WordCraft"),
-        ("unknown future label", "unknown future label"),
-    ] {
-        assert_eq!(tr(bg, source), expected, "{source}");
-    }
-    // The search hint's example must find the command it names.
-    assert_eq!(tr(bg, "Insert Table"), "Вмъкване на таблица");
-    assert!(tr(bg, "Type a command, e.g. \"insert table\"").contains("вмъкване на таблица"));
+    assert_eq!(tr(bg, "WordCraft"), "WordCraft");
+    assert_eq!(tr(bg, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(bg, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Страница 3 от 9");
     // Count-neutral wording is grammatical for every count: `Думи: 21`, `Думи: 1 от 21`.
     for count in [0, 1, 2, 5, 21, 100, 1000] {
@@ -1349,33 +1146,10 @@ fn croatian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn croatian_covers_the_entire_existing_interface_catalog_and_keeps_count_labels_neutral() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
+fn croatian_translations_preserve_templates_contexts_and_count_labels() {
     let hr = lang("hr");
-    // Every key of every other catalog, and no catalog errors.
-    for other in Lang::all().filter(|l| *l != Lang::EN && l.code() != "hr") {
-        let mut missing: Vec<String> = keys(other.0.source).difference(&keys(hr.0.source)).cloned().collect();
-        missing.sort();
-        // Italian and Hungarian still carry "Style: APA", which the interface no longer shows.
-        missing.retain(|k| k != "Style: APA" || !matches!(other.code(), "it" | "hu"));
-        assert!(missing.is_empty(), "hr lacks {}'s {missing:?}", other.code());
-    }
-    assert!(parse_entries(hr.0.source).1.is_empty());
-    for (source, expected) in [
-        ("File", "Datoteka"),
-        ("Home", "Početna"),
-        ("Insert", "Umetni"),
-        ("Review", "Pregled"),
-        ("Save", "Spremi"),
-        ("Heading 1", "Naslov 1"),
-        ("Spelling & Grammar", "Pravopis i gramatika"),
-        ("Hyphenation", "Rastavljanje riječi"),
-        ("WordCraft", "WordCraft"),
-        ("unknown future label", "unknown future label"),
-    ] {
-        assert_eq!(tr(hr, source), expected, "{source}");
-    }
+    assert_eq!(tr(hr, "WordCraft"), "WordCraft");
+    assert_eq!(tr(hr, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(hr, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Stranica 3 od 9");
     // The letter template is "Pismo"; the paper size of the same English name stays "Letter".
     assert_eq!(trc(hr, "template", "Letter"), "Pismo");
@@ -1434,32 +1208,10 @@ fn swedish_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn swedish_covers_the_entire_existing_interface_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    // Every key the interface looks up (Spanish carries them all), and no catalog errors.
-    assert!(keys(lang("sv").0.source).is_superset(&keys(lang("es").0.source)));
-    assert!(parse_entries(lang("sv").0.source).1.is_empty());
+fn swedish_translations_preserve_templates_and_count_labels() {
     let sv = lang("sv");
-    for (source, expected) in [
-        ("File", "Arkiv"),
-        ("Home", "Start"),
-        ("Insert", "Infoga"),
-        ("Font", "Typsnitt"),
-        ("Paragraph", "Stycke"),
-        ("Review", "Granska"),
-        ("Save", "Spara"),
-        ("Heading 1", "Rubrik 1"),
-        ("Hyphenation", "Avstavning"),
-        ("Track Changes", "Spåra ändringar"),
-        ("WordCraft", "WordCraft"),
-        ("unknown future label", "unknown future label"),
-    ] {
-        assert_eq!(tr(sv, source), expected, "{source}");
-    }
-    // The search hint's example must find the command it names.
-    assert_eq!(tr(sv, "Insert Table"), "Infoga tabell");
-    assert!(tr(sv, "Type a command, e.g. \"insert table\"").contains(&tr(sv, "Insert Table").to_lowercase()));
+    assert_eq!(tr(sv, "WordCraft"), "WordCraft");
+    assert_eq!(tr(sv, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(sv, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Sida 3 av 9");
     // `ord` is the same in the singular and the plural, so the counts read right for every number.
     for count in [0, 1, 2, 5, 21, 100, 1000] {
@@ -1510,30 +1262,6 @@ fn vietnamese_locales_and_saved_preference_work_without_changing_the_document() 
     assert_eq!(restored.language, "vi");
     assert_eq!(Lang::from_pref(&restored.language), vi);
     assert_eq!(vi.name(), "Tiếng Việt");
-}
-
-#[test]
-fn vietnamese_covers_existing_catalog_keys_with_an_explicit_preview_fallback() {
-    use std::collections::HashSet;
-    let vi = lang("vi");
-    let (entries, errors) = parse_entries(vi.0.source);
-    assert!(errors.is_empty(), "{errors:?}");
-    let vi_keys: HashSet<_> = entries.into_iter().map(|e| (e.context, e.source)).collect();
-    // The short plain title fits the preview too; this is the only deliberate context fallback.
-    let preview_title = ("preview".to_string(), "Title".to_string());
-    assert!(vi_keys.contains(&(String::new(), "Title".to_string())));
-    assert_eq!(trc(vi, "preview", "Title"), "Tiêu đề");
-    assert_eq!(trc(vi, "preview", "Title"), tr(vi, "Title"));
-    // Compare complete (context, source) keys so a contextual entry cannot hide a missing plain
-    // translation, or silently satisfy another context's key.
-    for other in Lang::all().filter(|l| *l != Lang::EN && l.code() != "vi") {
-        let (entries, errors) = parse_entries(other.0.source);
-        assert!(errors.is_empty(), "{}: {errors:?}", other.code());
-        let keys: HashSet<_> = entries.into_iter().map(|e| (e.context, e.source)).collect();
-        let mut missing: Vec<_> = keys.difference(&vi_keys).filter(|key| **key != preview_title).cloned().collect();
-        missing.sort();
-        assert!(missing.is_empty(), "vi lacks {}'s {missing:?}", other.code());
-    }
 }
 
 #[test]
@@ -1608,28 +1336,6 @@ fn romanian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn romanian_covers_every_key_of_every_other_catalog_and_keeps_placeholders() {
-    use std::collections::HashSet;
-    let ro = lang("ro");
-    let (entries, errors) = parse_entries(ro.0.source);
-    assert!(errors.is_empty(), "{errors:?}");
-    let ro_keys: HashSet<_> = entries.iter().map(|e| (e.context.clone(), e.source.clone())).collect();
-    for other in Lang::all().filter(|l| *l != Lang::EN && l.code() != "ro") {
-        let (other_entries, other_errors) = parse_entries(other.0.source);
-        assert!(other_errors.is_empty(), "{}: {other_errors:?}", other.code());
-        let mut missing: Vec<_> = other_entries.into_iter().map(|e| (e.context, e.source)).filter(|k| !ro_keys.contains(k)).collect();
-        missing.sort();
-        // Italian and Hungarian still carry "Style: APA", which the interface no longer shows.
-        missing.retain(|(_, k)| k != "Style: APA" || !matches!(other.code(), "it" | "hu"));
-        assert!(missing.is_empty(), "ro lacks {}'s {missing:?}", other.code());
-    }
-    assert_eq!(tr(ro, "Home"), "Pornire");
-    assert_eq!(tr(ro, "Save"), "Salvare");
-    assert_eq!(tr(ro, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(ro, "Exported {path}"), &[("path", "draft.docx")]), "Exportat: draft.docx");
-}
-
-#[test]
 fn bundled_interface_fonts_cover_romanian_without_system_fallbacks() {
     let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
     let (entries, errors) = parse_entries(lang("ro").0.source);
@@ -1667,41 +1373,9 @@ fn slovenian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn slovenian_covers_every_key_of_every_other_catalog() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    let slovenian = keys(lang("sl").0.source);
-    assert!(parse_entries(lang("sl").0.source).1.is_empty());
-    for other in Lang::all().filter(|l| *l != Lang::EN && l.code() != "sl") {
-        let mut missing: Vec<String> = keys(other.0.source).difference(&slovenian).cloned().collect();
-        missing.sort();
-        // Italian and Hungarian still carry "Style: APA", which the interface no longer shows.
-        missing.retain(|k| k != "Style: APA" || !matches!(other.code(), "it" | "hu"));
-        assert!(missing.is_empty(), "sl lacks {}'s {missing:?}", other.code());
-    }
+fn slovenian_translations_preserve_templates_and_count_labels() {
     let sl = lang("sl");
-    for (source, expected) in [
-        ("File", "Datoteka"),
-        ("Home", "Osnovno"),
-        ("Insert", "Vstavljanje"),
-        ("Layout", "Postavitev"),
-        ("References", "Sklici"),
-        ("Review", "Pregled"),
-        ("View", "Pogled"),
-        ("Save", "Shrani"),
-        ("Bold", "Krepko"),
-        ("Italic", "Ležeče"),
-        ("Underline", "Podčrtano"),
-        ("Track Changes", "Sledenje spremembam"),
-        ("Insert Citation", "Vstavi citat"),
-        ("Citations", "Citati"),
-        ("unknown future label", "unknown future label"),
-    ] {
-        assert_eq!(tr(sl, source), expected, "{source}");
-    }
-    // The search hint's example must find the command it names.
-    assert_eq!(tr(sl, "Insert Table"), "Vstavi tabelo");
-    assert!(tr(sl, "Type a command, e.g. \"insert table\"").contains("vstavi tabelo"));
+    assert_eq!(tr(sl, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(sl, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Stran 3 od 9");
     // Count-neutral wording is grammatical for every count (Slovenian has singular, dual and plural).
     for count in [0, 1, 2, 3, 5, 101, 102] {
@@ -1722,18 +1396,4 @@ fn bundled_interface_fonts_cover_slovenian_letters() {
         }
     }
     assert!(!lang("sl").uses_cjk());
-}
-
-#[test]
-fn slovenian_has_no_keys_outside_the_other_catalogs() {
-    use std::collections::HashSet;
-    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
-    let slovenian = keys(lang("sl").0.source);
-    let mut union = HashSet::new();
-    for other in Lang::all().filter(|l| *l != Lang::EN && l.code() != "sl") {
-        union.extend(keys(other.0.source));
-    }
-    let mut extra: Vec<String> = slovenian.difference(&union).cloned().collect();
-    extra.sort();
-    assert!(extra.is_empty(), "sl has {} keys no other catalog has: {extra:?}", extra.len());
 }

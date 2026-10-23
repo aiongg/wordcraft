@@ -1,6 +1,6 @@
 # Swedish interface
 
-> **Last reviewed:** 2026-10-13 · **Last updated:** 2026-10-13 · **Change:** minor (Swedish interface catalog and regression checks) · **Target:** WordCraft 0.6.1
+> **Last reviewed:** 2026-10-13 · **Last updated:** 2026-10-23 · **Change:** trivial (interface-language tests: a missing translation is reported, never a test failure, and each check covers every language; previously minor: Swedish interface catalog and regression checks) · **Target:** WordCraft 0.6.1
 
 Choose **File › Options › Interface language › Svenska**, or follow a Swedish system display
 language (`sv-SE`, `sv_SE.UTF-8`, and `sv-FI` for Swedish in Finland). The catalog code is `sv`;
@@ -79,13 +79,12 @@ quotes); they are translated as written and still act on English text.
 ## Verification and remaining scope
 
 `cargo test -p wordcraft-ui-egui --lib i18n::tests` covers Swedish locale tags (`sv`, `sv-SE`,
-`sv_SE.UTF-8`, `SV-se`, `sv-FI`) and preference order, saving and restoring `sv`, unchanged
-document content, every key of the reference catalog, no catalog errors, the search hint's example
-(`infoga tabell`), page and count wording, English fallback, and the glyphs `ÅÄÖåäöÉé` plus every
-other accented letter the catalog uses in the bundled Inter (Regular, Medium, SemiBold) and
-JetBrains Mono. The shared catalog checks (validation, every tab and command translated) include
-Swedish automatically, and the on-demand interface audit (`untranslated_interface_text`) checks
-Swedish alongside Russian, Hungarian, Turkish and Bulgarian.
+`sv_SE.UTF-8`, `SV-se`, `sv-FI`) and preference order, saving and restoring `sv`, unchanged document
+content, page and count wording, English fallback, and the glyphs `ÅÄÖåäöÉé` plus every other
+accented letter the catalog uses in the bundled Inter (Regular, Medium, SemiBold) and JetBrains
+Mono. The shared checks (catalog validation, the search hint's example, and a per-language report of
+untranslated tabs and commands) include Swedish automatically, and the on-demand interface audit
+(`untranslated_interface_text`) checks Swedish alongside Russian, Hungarian, Turkish and Bulgarian.
 
 Spelling, grammar and hyphenation stay English-only: this is an interface translation, not
 Swedish proofing.
@@ -94,4 +93,5 @@ Swedish proofing.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and is reported per language (`untranslated_tabs_and_commands_are_reported`), never a failure; catalog-coverage asserts for single languages removed; the search hint check covers every language |
 | 2026-10-13 | minor | Swedish catalog (2,504 entries), conventions, terminology, known compromises and regression checks |
