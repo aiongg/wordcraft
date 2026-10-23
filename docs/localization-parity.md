@@ -107,9 +107,9 @@ GOST, LaTeX, Unicode) and `bad parameters:` errors, which name a command's JSON 
 scripts and MCP, stay English. Size labels (Envelopes, Labels, Layout › Size) are translated
 patterns (`{name}   {height} × {width} in`) with the region's decimal separator; paper names
 other than envelopes (Letter, Legal, A4, B5 (JIS)) stay as they are (#1128).
-`every_disabled_reason_is_translated` reads every command's `enabled` check from the engine's
-command sources (the reason a ribbon hint gives for a greyed-out control, #1086) and fails if any
-catalog lacks one (#2678).
+`untranslated_disabled_reasons_are_reported` reads every command's `enabled` check from the
+engine's command sources (the reason a ribbon hint gives for a greyed-out control, #1086) and
+prints, per language, the reasons a catalog lacks (#2678).
 
 Set Proofing Language › Set As Default keeps the chosen language in user preferences across restarts (#2882), taking precedence over the interface language for blank documents and plain-text/Markdown files. Existing DOCX and built-in English templates keep their own language. Ordinary selection-language changes do not change this preference; older settings keep following the interface language. A rejected command, including a final protected-region check, retains the previous saved default. This does not install dictionaries or add proofing support.
 
@@ -218,7 +218,7 @@ WordCraft keeps 2,54 cm).
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-23 | trivial | Lookup, context, template, style-name and command-search tests use inline fixture catalogs or the pseudo-language; tests that asserted one language's catalog wording removed |
-| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and is reported per language (`untranslated_tabs_and_commands_are_reported`), never a failure; catalog-coverage asserts for single languages removed |
+| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and is reported per language (`untranslated_tabs_and_commands_are_reported`, `untranslated_disabled_reasons_are_reported`), never a failure; catalog-coverage asserts for single languages removed |
 | 2026-10-21 | trivial | Japanese row: ruby (Phonetic Guide) is supported over its base text and HTML export/import keeps it (#1681); the row had listed ruby as missing |
 | 2026-10-20 | trivial | Russian sorting keeps ё with е and recognises decomposed ё/й; synthetic ordering, case and index-heading regressions; broader parity estimates unchanged |
 | 2026-10-20 | trivial | File › Home's greeting (Good morning / afternoon / evening) added to the nine catalogs that lacked it (de, et, ja, pt-br, sr, sr-latn, uk, zh-hans, zh-hant); a test keeps it in every language |

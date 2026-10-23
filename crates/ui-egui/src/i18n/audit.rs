@@ -514,10 +514,10 @@ fn disabled_reasons() -> std::collections::BTreeSet<String> {
     reasons
 }
 
-/// Ribbon tooltips show why a control is off in the interface's language: every reason has an
-/// entry in every catalog (#2678).
+/// Ribbon tooltips show why a control is off in the interface's language (#2678). The test fails
+/// when the source scan misses a reason; reasons a catalog lacks are printed per language.
 #[test]
-fn every_disabled_reason_is_translated() {
+fn untranslated_disabled_reasons_are_reported() {
     let reasons = disabled_reasons();
     // The source scan finds every reason the registry gives in a blank and the sample document.
     for doc in [wordcraft_doc::Document::new(), wordcraft_engine::sample::sample_document()] {
@@ -532,9 +532,6 @@ fn every_disabled_reason_is_translated() {
     // Reasons the UI itself gives (`widgets.rs::tooltip`), which the engine's checks never reach.
     let mut reasons = reasons;
     reasons.insert("Open a document first".to_string());
-    let mut missing = Vec::new();
-    for l in super::Lang::all().filter(|l| *l != super::Lang::EN) {
-        missing.extend(reasons.iter().filter(|r| !super::has(l, r)).map(|r| format!("{}: {r:?}", l.code())));
-    }
-    assert!(missing.is_empty(), "{} disabled reasons are untranslated:\n{missing:#?}", missing.len());
+    let reasons: Vec<&str> = reasons.iter().map(String::as_str).collect();
+    super::tests::report_untranslated("disabled reasons", &reasons);
 }

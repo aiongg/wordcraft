@@ -146,7 +146,7 @@ fn bundled_catalogs_are_well_formed() {
 
 /// Prints the strings each language has no translation for, one block per language (run with
 /// `--nocapture` to read them). A missing translation falls back to English and never fails.
-fn report_untranslated(what: &str, sources: &[&str]) {
+pub(super) fn report_untranslated(what: &str, sources: &[&str]) {
     for l in Lang::all().filter(|l| *l != Lang::EN) {
         let mut missing: Vec<&str> = sources.iter().copied().filter(|s| !has(l, s)).collect();
         missing.sort_unstable();
