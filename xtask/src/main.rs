@@ -171,25 +171,29 @@ fn nextest_available() -> bool {
 
 /// The interface audit, which `cmd_i18n_report` runs on its own so its report is printed.
 const I18N_AUDIT: &str = "i18n::audit::untranslated_interface_text";
+const I18N_AUDIT_FILTER: &str = "package(wordcraft-ui-egui) & test(=i18n::audit::untranslated_interface_text)";
 
 fn cmd_test() -> Result<(), String> {
-    let mut c = cargo();
-    if nextest_available() {
-        let filter = format!("not (package(wordcraft-ui-egui) & test(={I18N_AUDIT}))");
-        c.args(["nextest", "run"]).args(TEST_TARGETS).args(["-E", &filter]);
-        run(c, &format!("cargo nextest run {} -E '{filter}'", TEST_TARGETS.join(" ")))
-    } else {
-        eprintln!("note: cargo-nextest is not installed, running cargo test (cargo install cargo-nextest --locked)");
-        c.arg("test").args(TEST_TARGETS).args(["--", "--skip", I18N_AUDIT]);
-        run(c, &format!("cargo test {} -- --skip {I18N_AUDIT}", TEST_TARGETS.join(" ")))
-    }
+    test_run(&["-E", &format!("not ({I18N_AUDIT_FILTER})")], &["--skip", I18N_AUDIT])
 }
 
 /// Missing translations never fail the build: the report lists them in the log.
 fn cmd_i18n_report() -> Result<(), String> {
+    test_run(&["-E", I18N_AUDIT_FILTER, "--no-capture"], &["--exact", I18N_AUDIT, "--nocapture"])
+}
+
+/// A test run over `TEST_TARGETS`, with nextest arguments or, without nextest, libtest arguments.
+/// Every run builds the same targets, so a second run reuses the first one's build.
+fn test_run(nextest: &[&str], libtest: &[&str]) -> Result<(), String> {
     let mut c = cargo();
-    c.args(["test", "-p", "wordcraft-ui-egui", "--lib", "--", "--exact", I18N_AUDIT, "--nocapture"]);
-    run(c, &format!("cargo test -p wordcraft-ui-egui --lib -- --exact {I18N_AUDIT} --nocapture"))
+    if nextest_available() {
+        c.args(["nextest", "run"]).args(TEST_TARGETS).args(nextest);
+        run(c, &format!("cargo nextest run {} {}", TEST_TARGETS.join(" "), nextest.join(" ")))
+    } else {
+        eprintln!("note: cargo-nextest is not installed, running cargo test (cargo install cargo-nextest --locked)");
+        c.arg("test").args(TEST_TARGETS).arg("--").args(libtest);
+        run(c, &format!("cargo test {} -- {}", TEST_TARGETS.join(" "), libtest.join(" ")))
+    }
 }
 
 /// nextest does not run doctests.
