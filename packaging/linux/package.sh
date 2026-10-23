@@ -21,7 +21,7 @@ APP_ID=ai.storyteller.wordcraft
 
 SKIP_BUILD=0
 FORMATS="appimage deb rpm tar"
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-build) SKIP_BUILD=1; shift ;;
     --formats) FORMATS="$2"; shift 2 ;;
@@ -42,8 +42,8 @@ BASENAME="wordcraft-$VERSION-linux-$ARCH"
 
 echo "==> WordCraft $VERSION for Linux $ARCH ($FORMATS)"
 
-if [ "$SKIP_BUILD" = 0 ]; then
-  if [ -n "${CROSS_TARGET:-}" ]; then
+if [[ "$SKIP_BUILD" = 0 ]]; then
+  if [[ -n "${CROSS_TARGET:-}" ]]; then
     (cd "$ROOT" && cargo build --release --locked -p wordcraft -p wordcraft-cli --target "$CROSS_TARGET")
   else
     (cd "$ROOT" && cargo build --release --locked -p wordcraft -p wordcraft-cli)
@@ -113,13 +113,13 @@ if has appimage; then
       ;;
     *) APPIMAGETOOL_SHA256='' RUNTIME_SHA256='' ;;
   esac
-  if [ -z "$RUNTIME_SHA256" ]; then
+  if [[ -z "$RUNTIME_SHA256" ]]; then
     echo "no pinned AppImage runtime for $ARCH" >&2
     exit 2
   fi
   # Downloads $1 to $3 once and checks it against SHA-256 $2, the cached copy again on every run.
   fetch_pinned() {
-    if [ ! -x "$3" ]; then
+    if [[ ! -x "$3" ]]; then
       curl --proto '=https' -fsSL -o "$3.download" "$1"
       printf '%s  %s\n' "$2" "$3.download" | sha256sum -c -
       chmod 755 "$3.download"
@@ -136,8 +136,8 @@ if has appimage; then
   ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
 
   TOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
-  if [ -z "$TOOL" ]; then
-    if [ -z "$APPIMAGETOOL_SHA256" ]; then
+  if [[ -z "$TOOL" ]]; then
+    if [[ -z "$APPIMAGETOOL_SHA256" ]]; then
       echo "no pinned appimagetool for $ARCH; set APPIMAGETOOL or put appimagetool on PATH" >&2
       exit 2
     fi
@@ -168,16 +168,16 @@ if has appimage; then
   (cd "$DIST" && ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream \
     --runtime-file "$RUNTIME" -u "$UPDATE_INFO" "$APPDIR" "$OUT")
   echo "wrote $OUT"
-  if [ -s "$OUT.zsync" ]; then
+  if [[ -s "$OUT.zsync" ]]; then
     echo "wrote $OUT.zsync"
   else
     warn "zsyncmake not found, so $OUT.zsync was not written; AppImage delta updates need it"
   fi
 fi
 
-if [ -z "${CROSS_TARGET:-}" ]; then
+if [[ -z "${CROSS_TARGET:-}" ]]; then
   "$STAGE/usr/bin/wordcraft-cli" --version
-elif [ -n "${EMULATOR:-}" ]; then
+elif [[ -n "${EMULATOR:-}" ]]; then
   "$EMULATOR" "$STAGE/usr/bin/wordcraft-cli" --version
 fi
 echo "==> done"
