@@ -21,8 +21,11 @@ commands:
   assets          check that every icon/image/font/asset is attributed in ATTRIBUTION.md
   layers          enforce the crate dependency layering (plan/architecture.md §3)
   wasm            cargo check --target wasm32-unknown-unknown for the wasm-safe crates (one call)
-  test            workspace tests (cargo nextest when installed, else cargo test), then doctests
-  ci              fmt --check, clippy -D warnings, test, doctest, assets, layers, wasm
+  test            workspace tests (cargo nextest when installed, else cargo test), the interface
+                  audit with its missing-translation report, then doctests
+  i18n-report     the interface audit: fails on text that skips the catalog, and prints the
+                  strings each language has no translation for (never a failure)
+  ci              fmt --check, clippy -D warnings, test, i18n-report, doctest, assets, layers, wasm
                   (stops at first failure)
   corpus [--download]
                   show where test corpora live; --download fetches PngSuite into corpus/pngsuite
@@ -42,7 +45,8 @@ fn main() -> ExitCode {
         Some("assets") => assets::run(&root()),
         Some("layers") => cmd_layers(),
         Some("wasm") => cmd_wasm(),
-        Some("test") => cmd_test().and_then(|()| cmd_doctest()),
+        Some("test") => cmd_test().and_then(|()| cmd_i18n_report()).and_then(|()| cmd_doctest()),
+        Some("i18n-report") => cmd_i18n_report(),
         Some("ci") => cmd_ci(),
         Some("corpus") => cmd_corpus(rest.contains(&"--download")),
         Some("stats") => stats::run(&root(), rest.contains(&"--exact")),
@@ -165,18 +169,27 @@ fn nextest_available() -> bool {
     cargo().args(["nextest", "--version"]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
 }
 
+/// The interface audit, which `cmd_i18n_report` runs on its own so its report is printed.
+const I18N_AUDIT: &str = "i18n::audit::untranslated_interface_text";
+
 fn cmd_test() -> Result<(), String> {
     let mut c = cargo();
-    let tool = if nextest_available() {
-        c.args(["nextest", "run"]);
-        "nextest run"
+    if nextest_available() {
+        let filter = format!("not (package(wordcraft-ui-egui) & test(={I18N_AUDIT}))");
+        c.args(["nextest", "run"]).args(TEST_TARGETS).args(["-E", &filter]);
+        run(c, &format!("cargo nextest run {} -E '{filter}'", TEST_TARGETS.join(" ")))
     } else {
         eprintln!("note: cargo-nextest is not installed, running cargo test (cargo install cargo-nextest --locked)");
-        c.arg("test");
-        "test"
-    };
-    c.args(TEST_TARGETS);
-    run(c, &format!("cargo {tool} {}", TEST_TARGETS.join(" ")))
+        c.arg("test").args(TEST_TARGETS).args(["--", "--skip", I18N_AUDIT]);
+        run(c, &format!("cargo test {} -- --skip {I18N_AUDIT}", TEST_TARGETS.join(" ")))
+    }
+}
+
+/// Missing translations never fail the build: the report lists them in the log.
+fn cmd_i18n_report() -> Result<(), String> {
+    let mut c = cargo();
+    c.args(["test", "-p", "wordcraft-ui-egui", "--lib", "--", "--exact", I18N_AUDIT, "--nocapture"]);
+    run(c, &format!("cargo test -p wordcraft-ui-egui --lib -- --exact {I18N_AUDIT} --nocapture"))
 }
 
 /// nextest does not run doctests.
@@ -206,6 +219,7 @@ fn cmd_ci() -> Result<(), String> {
             }),
         ),
         ("test", Box::new(cmd_test)),
+        ("i18n-report", Box::new(cmd_i18n_report)),
         ("doctest", Box::new(cmd_doctest)),
         ("assets", Box::new(|| assets::run(&root()))),
         ("layers", Box::new(cmd_layers)),

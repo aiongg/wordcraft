@@ -144,41 +144,6 @@ fn bundled_catalogs_are_well_formed() {
     }
 }
 
-/// Prints the strings each language has no translation for, one block per language (run with
-/// `--nocapture` to read them). A missing translation falls back to English and never fails.
-pub(super) fn report_untranslated(what: &str, sources: &[&str]) {
-    for l in Lang::all().filter(|l| *l != Lang::EN) {
-        let mut missing: Vec<&str> = sources.iter().copied().filter(|s| !has(l, s)).collect();
-        missing.sort_unstable();
-        missing.dedup();
-        if !missing.is_empty() {
-            eprintln!("{}: {} untranslated {what}", l.code(), missing.len());
-            for s in missing {
-                eprintln!("    {s:?}");
-            }
-        }
-    }
-}
-
-/// The ribbon tabs and every registered command's label and ribbon location, which menus,
-/// tooltips and command search show.
-#[test]
-fn untranslated_tabs_and_commands_are_reported() {
-    let session = wordcraft_engine::Session::new(wordcraft_doc::Document::new());
-    // Labels that read the same in every language.
-    let universal = |s: &str| !s.chars().any(char::is_alphabetic);
-    let tabs = crate::ribbon::TABS.iter().chain(&["Table Design", "Table Layout"]).copied();
-    let commands = session.registry.all().iter().flat_map(|spec| std::iter::once(spec.label).chain(spec.location.split(" › ")));
-    let sources: Vec<&str> = tabs.chain(commands).filter(|s| !s.is_empty() && !universal(s)).collect();
-    report_untranslated("tab and command labels", &sources);
-}
-
-/// File › Home opens with a greeting for the time of day (`backstage::home_page`).
-#[test]
-fn untranslated_file_home_greetings_are_reported() {
-    report_untranslated("File › Home greetings", &["Good morning", "Good afternoon", "Good evening"]);
-}
-
 #[test]
 fn the_language_setting_is_a_ui_command_and_persists() {
     let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
