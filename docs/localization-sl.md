@@ -1,6 +1,6 @@
 # Slovenian interface
 
-> **Last reviewed:** 2026-10-15 · **Last updated:** 2026-10-23 · **Change:** trivial (lookup and template tests use inline fixture catalogs or the pseudo-language, not catalog wording; previously trivial: interface-language tests: a missing translation is reported, never a test failure, and each check covers every language; previously trivial: catalog completed to every key of every other catalog, 2,614 entries) · **Target:** WordCraft 0.7.0
+> **Last reviewed:** 2026-10-15 · **Last updated:** 2026-10-23 · **Change:** trivial (interface-language tests: a missing translation never fails a test, `cargo xtask i18n-report` in `cargo xtask ci` prints the strings each language lacks, and lookup and template tests use inline fixture catalogs or the pseudo-language; previously trivial: catalog completed to every key of every other catalog, 2,614 entries) · **Target:** WordCraft 0.7.0
 
 Choose **File › Options › Interface language › Slovenščina**, or follow a Slovenian system display
 language (`sl-SI`, `sl_SI.UTF-8`). The catalog code is `sl`; `ui.language` with `{"value":"sl"}`
@@ -58,8 +58,8 @@ resources were consulted.
 ## Verification and remaining scope
 
 Tests in `crates/ui-egui/src/i18n/tests.rs` check locale selection, the saved preference and the
-bundled fonts' coverage of č, š, ž. The shared checks (catalog validation and a per-language report of untranslated tabs and commands) include Slovenian
-automatically. Slovenian spelling, grammar and hyphenation are not included. Native speaker review
+bundled fonts' coverage of č, š, ž. The shared checks (catalog validation and the missing-translation report, `cargo xtask i18n-report`)
+include Slovenian automatically. Slovenian spelling, grammar and hyphenation are not included. Native speaker review
 is welcome.
 
 ## Revision history
@@ -67,5 +67,5 @@ is welcome.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-23 | trivial | Lookup, context, template, style-name and command-search tests use inline fixture catalogs or the pseudo-language; tests that asserted one language's catalog wording removed |
-| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and is reported per language (`untranslated_tabs_and_commands_are_reported`), never a failure; catalog-coverage asserts for single languages removed |
+| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and never fails a test; `cargo xtask i18n-report` (part of `cargo xtask ci`) prints the strings each language lacks; single-language coverage tests removed |
 | 2026-10-15 | trivial | Catalog completed to every key of every other catalog (2,614 entries) |

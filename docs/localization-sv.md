@@ -1,6 +1,6 @@
 # Swedish interface
 
-> **Last reviewed:** 2026-10-13 · **Last updated:** 2026-10-23 · **Change:** trivial (lookup and template tests use inline fixture catalogs or the pseudo-language, not catalog wording; previously trivial: interface-language tests: a missing translation is reported, never a test failure, and each check covers every language; previously trivial: the interface audit lists missing Swedish entries instead of failing; previously minor: Swedish interface catalog and regression checks) · **Target:** WordCraft 0.6.1
+> **Last reviewed:** 2026-10-13 · **Last updated:** 2026-10-23 · **Change:** trivial (interface-language tests: a missing translation never fails a test, `cargo xtask i18n-report` in `cargo xtask ci` prints the strings each language lacks, and lookup and template tests use inline fixture catalogs or the pseudo-language; previously trivial: the interface audit lists missing Swedish entries instead of failing; previously minor: Swedish interface catalog and regression checks) · **Target:** WordCraft 0.6.1
 
 Choose **File › Options › Interface language › Svenska**, or follow a Swedish system display
 language (`sv-SE`, `sv_SE.UTF-8`, and `sv-FI` for Swedish in Finland). The catalog code is `sv`;
@@ -81,10 +81,8 @@ quotes); they are translated as written and still act on English text.
 `cargo test -p wordcraft-ui-egui --lib i18n::tests` covers Swedish locale tags (`sv`, `sv-SE`,
 `sv_SE.UTF-8`, `SV-se`, `sv-FI`) and preference order, saving and restoring `sv`, unchanged document
 content and the glyphs `ÅÄÖåäöÉé` plus every other accented letter the catalog uses in the bundled
-Inter (Regular, Medium, SemiBold) and JetBrains Mono. The shared checks (catalog validation and a
-per-language report of untranslated tabs and commands) include Swedish
-automatically, and the on-demand interface audit (`untranslated_interface_text`) checks Swedish
-alongside Russian, Hungarian, Turkish and Bulgarian.
+Inter (Regular, Medium, SemiBold) and JetBrains Mono. The shared checks (catalog validation and the missing-translation report, `cargo xtask i18n-report`)
+include Swedish automatically.
 
 Spelling, grammar and hyphenation stay English-only: this is an interface translation, not
 Swedish proofing.
@@ -94,6 +92,6 @@ Swedish proofing.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-23 | trivial | Lookup, context, template, style-name and command-search tests use inline fixture catalogs or the pseudo-language; tests that asserted one language's catalog wording removed |
-| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and is reported per language (`untranslated_tabs_and_commands_are_reported`), never a failure; catalog-coverage asserts for single languages removed |
+| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and never fails a test; `cargo xtask i18n-report` (part of `cargo xtask ci`) prints the strings each language lacks; single-language coverage tests removed |
 | 2026-10-23 | trivial | The interface audit lists Swedish strings the catalog lacks; a missing entry doesn't fail the audit |
 | 2026-10-13 | minor | Swedish catalog (2,504 entries), conventions, terminology, known compromises and regression checks |
