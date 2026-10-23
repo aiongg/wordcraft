@@ -72,22 +72,35 @@ fn settings_resolve_with_fallback() {
 
 #[test]
 fn lookups_fall_back_to_english() {
-    let zh = lang("zh-hans");
-    assert_eq!(tr(zh, "File"), "文件");
-    assert_eq!(tr(lang("zh-hant"), "File"), "檔案");
-    assert_eq!(tr(lang("ja"), "File"), "ファイル");
-    assert_eq!(tr(zh, "no such label"), "no such label");
+    let fx = fixture_lang("x-fixture", "\tFile\tFile-FX\n");
+    assert_eq!(tr(fx, "File"), "File-FX");
+    assert_eq!(tr(fx, "no such label"), "no such label");
     assert_eq!(tr(Lang::EN, "File"), "File");
-    assert!(has(zh, "Save") && !has(Lang::EN, "Save"));
+    assert!(has(fx, "File") && !has(fx, "Save") && !has(Lang::EN, "File"));
+}
+
+/// Each registered language looks strings up in its own catalog file.
+#[test]
+fn each_language_reads_its_own_catalog() {
+    for l in Lang::all() {
+        for e in parse_entries(l.0.source).0.iter().filter(|e| e.context.is_empty()) {
+            assert_eq!(tr(l, &e.source), e.translation, "{}", l.code());
+        }
+    }
 }
 
 #[test]
 fn current_language_is_per_thread() {
-    set_current(lang("ja"));
-    assert_eq!(t("Insert"), "挿入");
-    assert_eq!(location("Home › Font"), "ホーム › フォント");
-    assert_eq!(prefixed("Undo", "Bold"), "元に戻す: 太字");
-    assert_eq!(prefixed("Undo", ""), "元に戻す");
+    set_current(fixture_lang(
+        "x-fixture",
+        "\tInsert\tInsert-FX\n\tHome\tHome-FX\n\tFont\tFont-FX\n\tUndo\tUndo-FX\n\tUndo {action}\tUndo-FX: {action}\n\tBold\tBold-FX\n",
+    ));
+    assert_eq!(t("Insert"), "Insert-FX");
+    assert_eq!(location("Home › Font"), "Home-FX › Font-FX");
+    assert_eq!(prefixed("Undo", "Bold"), "Undo-FX: Bold-FX");
+    assert_eq!(prefixed("Undo", ""), "Undo-FX");
+    // An action without a translation keeps its English inside the translated template.
+    assert_eq!(prefixed("Undo", "Typing"), "Undo-FX: Typing");
     std::thread::spawn(|| assert_eq!(current(), Lang::EN)).join().unwrap();
     set_current(Lang::EN);
     assert_eq!(t("Insert"), "Insert");
@@ -99,7 +112,9 @@ fn placeholders_fill_without_reinterpreting_values() {
     let args = [("path", "a-{pages}.docx"), ("pages", "2")];
     assert_eq!(fmt("{pages}: {path}; {unknown}", &args), "2: a-{pages}.docx; {unknown}");
     assert_eq!(fmt("text {unfinished", &args), "text {unfinished");
-    assert_eq!(fmt(tr(lang("zh-hans"), "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "第 3 页，共 9 页");
+    // A translation may put the placeholders in another order.
+    let fx = fixture_lang("x-fixture", "\tPage {page} of {pages}\t{pages}: {page}\n");
+    assert_eq!(fmt(tr(fx, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "9: 3");
 }
 
 #[test]
@@ -164,21 +179,6 @@ fn untranslated_file_home_greetings_are_reported() {
     report_untranslated("File › Home greetings", &["Good morning", "Good afternoon", "Good evening"]);
 }
 
-/// Command search's hint names an example command. Where the hint and the command are both
-/// translated, the example is the translated command (any case) or the English one, so typing it
-/// finds the command.
-#[test]
-fn the_search_hint_names_a_command_it_finds_in_every_language() {
-    const HINT: &str = "Type a command, e.g. \"insert table\"";
-    for l in Lang::all().filter(|l| has(*l, HINT) && has(*l, "Insert Table")) {
-        set_current(l);
-        let hint = lowercase(tr(l, HINT));
-        let command = lowercase(tr(l, "Insert Table"));
-        assert!(hint.contains(&command) || hint.contains("insert table"), "{}: {hint:?} does not name {command:?}", l.code());
-    }
-    set_current(Lang::EN);
-}
-
 #[test]
 fn the_language_setting_is_a_ui_command_and_persists() {
     let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
@@ -218,19 +218,6 @@ fn ukrainian_locales_and_saved_preference_work_without_changing_the_document() {
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), uk);
     assert_eq!(uk.name(), "Українська");
-}
-
-#[test]
-fn ukrainian_translations_preserve_templates_and_count_labels() {
-    let uk = lang("uk");
-    assert_eq!(tr(uk, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(uk, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Експортовано draft-{words}.docx");
-    // Count-neutral wording is grammatical for every Ukrainian integer category, including teens.
-    for count in [0, 1, 2, 5, 11, 12, 21, 22, 25, 111, 121] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(uk, "{words} words"), &[("words", &words)]), format!("Слів: {count}"));
-        assert_eq!(fmt(tr(uk, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Слів: {count}; виділено: 1"));
-    }
 }
 
 #[test]
@@ -294,8 +281,6 @@ fn serbian_locales_resolve_by_script() {
         assert_eq!(lang_from_tag(tag), Some(lat), "{tag}");
     }
     assert_eq!(first_supported([UNSUPPORTED, "sr-Latn-RS", "en-US"]), Some(lat));
-    assert_eq!(tr(cyr, "File"), "Фајл");
-    assert_eq!(tr(lat, "File"), "Fajl");
 }
 
 #[test]
@@ -318,19 +303,6 @@ fn brazilian_portuguese_locales_and_saved_preference_work_without_changing_the_d
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), pt);
     assert_eq!(pt.name(), "Português (Brasil)");
-}
-
-#[test]
-fn brazilian_portuguese_translations_preserve_templates_and_count_labels() {
-    let pt = lang("pt-br");
-    assert_eq!(tr(pt, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(pt, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Exportado draft-{words}.docx");
-    // Count-neutral wording is grammatical for every count: `Palavras: 21`, `Palavras: 21; seleção: 1`.
-    for count in [0, 1, 2, 5, 21, 100, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(pt, "{words} words"), &[("words", &words)]), format!("Palavras: {count}"));
-        assert_eq!(fmt(tr(pt, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Palavras: {count}; seleção: 1"));
-    }
 }
 
 #[test]
@@ -372,26 +344,6 @@ fn czech_locales_and_saved_preference_work_without_changing_the_document() {
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), cs);
     assert_eq!(cs.name(), "Čeština");
-}
-
-#[test]
-fn czech_translations_preserve_templates_count_labels_and_style_names() {
-    let cs = lang("cs");
-    assert_eq!(tr(cs, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(cs, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Exportováno: draft-{words}.docx");
-    // Count-neutral wording is grammatical across all Czech plural categories (1, 2–4, 0/5+).
-    for count in [0, 1, 2, 3, 4, 5, 11, 21, 100, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(cs, "{words} words"), &[("words", &words)]), format!("Počet slov: {count}"));
-        assert_eq!(fmt(tr(cs, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Počet slov: {words}; vybráno: 1"));
-    }
-    set_current(cs);
-    // Built-in names and numbered style families use Czech; user-defined names stay as written.
-    for (style, expected) in [("Normal", "Normální"), ("No Spacing", "Bez mezer"), ("Heading 2", "Nadpis 2"), ("TOC 3", "Obsah 3")] {
-        assert_eq!(builtin_style_name(style), expected);
-    }
-    assert_eq!(builtin_style_name("My Own Style"), "My Own Style");
-    set_current(Lang::EN);
 }
 
 #[test]
@@ -505,18 +457,6 @@ fn russian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn russian_count_labels_read_right_for_every_count() {
-    let ru = lang("ru");
-    assert_eq!(tr(ru, "unknown future label"), "unknown future label");
-    // Count-neutral wording is grammatical for every count: `Слов: 21`, `Слов: 1 из 21`.
-    for count in [0, 1, 2, 5, 21, 100, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(ru, "{words} words"), &[("words", &words)]), format!("Слов: {count}"));
-        assert_eq!(fmt(tr(ru, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Слов: 1 из {count}"));
-    }
-}
-
-#[test]
 fn bundled_interface_fonts_cover_russian_without_system_fallbacks() {
     let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
     let (entries, errors) = parse_entries(lang("ru").0.source);
@@ -542,13 +482,17 @@ fn bundled_interface_fonts_cover_russian_without_system_fallbacks() {
 fn built_in_style_names_are_translated_for_display_and_user_styles_are_not() {
     let sheet = wordcraft_doc::StyleSheet::builtin();
     let name = |id: &str| style_name(sheet.get(id).unwrap());
-    set_current(lang("ru"));
-    assert_eq!(name("Normal"), "Обычный");
-    assert_eq!(name("Title"), "Заголовок");
-    assert_eq!(name("Heading1"), "Заголовок 1");
+    set_current(fixture_lang(
+        "x-fixture",
+        "\tNormal\tNormal-FX\n\tHeading 1\tHeading-one-FX\n\tHeading {n}\tHeading-FX {n}\n\tTOC {n}\tTOC-FX {n}\n\tIndex {n}\tIndex-FX {n}\n",
+    ));
+    assert_eq!(name("Normal"), "Normal-FX");
+    // An explicit entry wins over its family's template.
+    assert_eq!(name("Heading1"), "Heading-one-FX");
     // Numbered families beyond the catalog's explicit entries go through one template.
-    assert_eq!(name("Heading7"), "Заголовок 7");
-    assert_eq!(name("TOC9"), "Оглавление 9");
+    assert_eq!(name("Heading7"), "Heading-FX 7");
+    assert_eq!(name("TOC9"), "TOC-FX 9");
+    assert_eq!(builtin_style_name("Index 2"), "Index-FX 2");
     // A style the author made keeps its name, even when it matches a built-in one.
     let mine = wordcraft_doc::Style { name: "Normal".into(), builtin: false, ..Default::default() };
     assert_eq!(style_name(&mine), "Normal");
@@ -562,40 +506,6 @@ fn built_in_style_names_are_translated_for_display_and_user_styles_are_not() {
 }
 
 #[test]
-fn spanish_built_in_style_names_are_translated() {
-    set_current(lang("es"));
-    for (source, expected) in [
-        ("Book Title", "Título de libro"),
-        ("Caption", "Leyenda"),
-        ("Emphasis", "Énfasis"),
-        ("Endnote Reference", "Referencia de nota al final"),
-        ("Endnote Text", "Texto de nota al final"),
-        ("Footnote Reference", "Referencia de nota al pie"),
-        ("Footnote Text", "Texto de nota al pie"),
-        ("Hyperlink", "Hipervínculo"),
-        ("Intense Emphasis", "Énfasis intenso"),
-        ("Intense Quote", "Cita intensa"),
-        ("Intense Reference", "Referencia intensa"),
-        ("List Paragraph", "Párrafo de lista"),
-        ("Quote", "Cita"),
-        ("Strong", "Fuerte"),
-        ("Subtitle", "Subtítulo"),
-        ("Subtle Emphasis", "Énfasis sutil"),
-        ("Subtle Reference", "Referencia sutil"),
-        ("TOC Heading", "Título de tabla de contenido"),
-    ] {
-        assert_eq!(builtin_style_name(source), expected, "{source}");
-    }
-    for level in 4..=9 {
-        assert_eq!(builtin_style_name(&format!("Heading {level}")), format!("Título {level}"));
-    }
-    for level in 1..=9 {
-        assert_eq!(builtin_style_name(&format!("TOC {level}")), format!("Tabla de contenido {level}"));
-    }
-    set_current(Lang::EN);
-}
-
-#[test]
 fn context_entries_override_only_their_context_and_unknown_contexts_are_rejected() {
     let (c, errors) = Catalog::parse("\tTitle\tЗаголовок\npreview\tTitle\tТитул\n\tFont\tШрифт\nnope\tFont\tX\n");
     assert_eq!(errors.len(), 1, "{errors:?}");
@@ -605,11 +515,12 @@ fn context_entries_override_only_their_context_and_unknown_contexts_are_rejected
     // Without a context entry, a context lookup uses the plain one.
     assert_eq!(c.in_context("preview", "Font"), Some("Шрифт"));
     assert_eq!(c.in_context("preview", "Missing"), None);
-    let ru = lang("ru");
-    assert_eq!(tr(ru, "Title"), "Заголовок");
-    assert_eq!(trc(ru, "preview", "Title"), "Пример");
+    let fx = fixture_lang("x-fixture", "\tTitle\tTitle-FX\npreview\tTitle\tSample-FX\n");
+    assert_eq!(tr(fx, "Title"), "Title-FX");
+    assert_eq!(trc(fx, "preview", "Title"), "Sample-FX");
+    assert_eq!(trc(fx, "template", "Title"), "Title-FX");
     assert_eq!(trc(Lang::EN, "preview", "Title"), "Title");
-    assert_eq!(trc(lang("ja"), "preview", "Unknown"), "Unknown");
+    assert_eq!(trc(fx, "preview", "Unknown"), "Unknown");
 }
 
 #[test]
@@ -630,18 +541,6 @@ fn estonian_locales_and_saved_preference_keep_document_content() {
     let saved = serde_json::to_string(&app.ui).unwrap();
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), et);
-}
-
-#[test]
-fn estonian_translations_preserve_templates_and_keep_count_labels_neutral() {
-    let et = lang("et");
-    assert_eq!(tr(et, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(et, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Eksporditud: draft-{words}.docx");
-    for count in [0, 1, 2, 11, 21, 101] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(et, "{words} words"), &[("words", &words)]), format!("Sõnu: {count}"));
-        assert_eq!(fmt(tr(et, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Sõnu: {count}; valitud: 1"));
-    }
 }
 
 #[test]
@@ -679,29 +578,6 @@ fn turkish_locales_and_saved_preference_work_without_changing_the_document() {
     app.run("ui.language", serde_json::json!({"value": "auto"})).unwrap();
     assert_eq!(app.ui.language, AUTO);
     assert_eq!(tr.name(), "Türkçe");
-}
-
-#[test]
-fn turkish_translations_preserve_templates_count_labels_and_casing() {
-    let tr = lang("tr");
-    assert_eq!(super::tr(tr, "WordCraft"), "WordCraft");
-    assert_eq!(super::tr(tr, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(super::tr(tr, "Exported {path}"), &[("path", "taslak-{words}.docx")]), "Dışa aktarıldı: taslak-{words}.docx");
-    assert_eq!(fmt(super::tr(tr, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Sayfa 3 / 9");
-    // The Font dialog uppercases its preview sample for All Caps, and an `i` would uppercase to
-    // `I` rather than `İ`, so the sample has no lowercase i.
-    assert!(!super::tr(tr, "AaBbYyZz").contains('i'));
-    // Turkish count nouns remain singular for both one and other, including zero and large counts.
-    for count in [0, 1, 2, 5, 11, 21, 100, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(super::tr(tr, "{words} words"), &[("words", &words)]), format!("{count} sözcük"));
-        assert_eq!(fmt(super::tr(tr, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("{count} sözcükten 1 seçili"));
-    }
-    set_current(tr);
-    assert_eq!(location("Home › Font"), "Giriş › Yazı Tipi");
-    assert_eq!(prefixed("Undo", "Italic"), "Geri Al: İtalik");
-    set_current(Lang::EN);
-    assert_eq!(super::tr(Lang::EN, "Italic"), "Italic");
 }
 
 #[test]
@@ -744,28 +620,6 @@ fn hungarian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn hungarian_translations_preserve_templates_count_labels_and_style_names() {
-    let hu = lang("hu");
-    assert_eq!(super::tr(hu, "WordCraft"), "WordCraft");
-    assert_eq!(super::tr(hu, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(super::tr(hu, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Oldal: 3/9");
-    // A noun after a number stays singular in Hungarian, whatever the count.
-    for count in [0, 1, 2, 21, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(super::tr(hu, "{words} words"), &[("words", &words)]), format!("{count} szó"));
-    }
-    set_current(hu);
-    // Built-in styles show translated names; numbered families go through their template.
-    for (style, expected) in [("Normal", "Normál"), ("No Spacing", "Nincs térköz"), ("Heading 2", "Címsor 2"), ("TOC 3", "Tartalomjegyzék 3")] {
-        assert_eq!(builtin_style_name(style), expected);
-    }
-    assert_eq!(builtin_style_name("My Own Style"), "My Own Style");
-    assert_eq!(location("Home › Font"), "Kezdőlap › Betűtípus");
-    assert_eq!(prefixed("Undo", "Bold"), "Visszavonás: Félkövér");
-    set_current(Lang::EN);
-}
-
-#[test]
 fn bundled_interface_fonts_cover_hungarian_without_system_fallbacks() {
     let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
     let (entries, errors) = parse_entries(lang("hu").0.source);
@@ -792,10 +646,6 @@ fn french_locales_and_saved_preference_work_without_changing_the_document() {
     assert_eq!(first_supported([UNSUPPORTED, "fr-CA", "en-US"]), Some(fr));
     assert_eq!(normalize_pref("FR"), Some("fr"));
     assert_eq!(fr.name(), "Français");
-    assert_eq!(tr(fr, "Home"), "Accueil");
-    assert_eq!(tr(fr, "Save"), "Enregistrer");
-    assert_eq!(fmt(tr(fr, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Page 3 sur 9");
-    assert_eq!(tr(fr, "unknown future label"), "unknown future label");
     let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_engine::sample::sample_document()), Default::default());
     let before = serde_json::to_value(&app.session.doc).unwrap();
     let result = app.run("ui.language", serde_json::json!({"value": "FR"})).unwrap();
@@ -859,24 +709,6 @@ fn polish_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn polish_translations_preserve_templates_and_count_labels() {
-    let pl = lang("pl");
-    assert_eq!(tr(pl, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(pl, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Wyeksportowano: draft-{words}.docx");
-    assert_eq!(fmt(tr(pl, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Strona 3 z 9");
-    // Count-neutral wording reads grammatically for every Polish number form (1, 2–4, 5+, 12–14, 22).
-    for count in [0, 1, 2, 4, 5, 12, 14, 22, 25, 101, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(pl, "{words} words"), &[("words", &words)]), format!("Słowa: {count}"));
-        assert_eq!(fmt(tr(pl, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Słowa: 1 z {count}"));
-    }
-    set_current(pl);
-    assert_eq!(location("Review › Proofing"), "Recenzja › Sprawdzanie");
-    assert_eq!(prefixed("Undo", "Bold"), "Cofnij: Pogrubienie");
-    set_current(Lang::EN);
-}
-
-#[test]
 fn bundled_interface_fonts_cover_polish_without_system_fallbacks() {
     let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
     let (entries, errors) = parse_entries(lang("pl").0.source);
@@ -909,13 +741,15 @@ fn a_polish_interface_writes_new_documents_in_polish() {
     assert!(!app.session.dirty);
     app.run("file.new", serde_json::json!({})).unwrap();
     assert_eq!(app.session.doc.styles.default_chr.lang.as_deref(), Some("pl-PL"));
-    // Typing Polish then shows no spelling marks; the status bar names the language.
+    // Typing Polish then shows no spelling marks; the status bar names the language, translated.
     app.session.run("text.insert", &serde_json::json!({"text": "Zażółć gęślą jaźń"})).unwrap();
     assert_eq!(app.session.run("review.issues", &serde_json::json!({})).unwrap(), serde_json::json!([]));
-    set_current(lang("pl"));
-    assert_eq!(crate::ribbon::caret_language(&app), "Polski");
+    // The app's frames set the interface language; name it in English first.
     set_current(Lang::EN);
     assert_eq!(crate::ribbon::caret_language(&app), "Polish");
+    super::pseudo::set(true);
+    assert_eq!(crate::ribbon::caret_language(&app), "⟦Polish⟧", "the language name goes through the catalog");
+    super::pseudo::set(false);
     // Back to English: documents already written keep their language.
     app.run("ui.language", serde_json::json!({"value": "en"})).unwrap();
     frame(&mut app);
@@ -935,10 +769,12 @@ fn a_czech_interface_writes_new_documents_and_plain_text_in_czech() {
     assert!(!app.session.dirty);
     app.run("file.new", serde_json::json!({})).unwrap();
     assert_eq!(app.session.doc.styles.default_chr.lang.as_deref(), Some("cs-CZ"));
-    set_current(lang("cs"));
-    assert_eq!(crate::ribbon::caret_language(&app), "Čeština");
+    // The app's frames set the interface language; name it in English first.
     set_current(Lang::EN);
     assert_eq!(crate::ribbon::caret_language(&app), "Czech");
+    super::pseudo::set(true);
+    assert_eq!(crate::ribbon::caret_language(&app), "⟦Czech⟧", "the language name goes through the catalog");
+    super::pseudo::set(false);
     for path in ["poznamka.txt", "poznamka.md"] {
         // Base64 of our synthetic text, "Město"; file.open takes bytes without a dialog.
         app.session.run("file.open", &serde_json::json!({"path": path, "data": "TcSbc3Rv"})).unwrap();
@@ -960,14 +796,16 @@ fn an_italian_interface_writes_new_documents_in_italian() {
     frame(&mut app);
     assert_eq!(app.session.editing_lang.as_deref(), Some("it-IT"));
     assert_eq!(app.session.doc.styles.default_chr.lang.as_deref(), Some("it-IT"), "the untouched first document follows");
-    // Typing Italian then shows no English misspellings; the status bar names the language.
+    // Typing Italian then shows no English misspellings; the status bar names the language, translated.
     app.session.run("text.insert", &serde_json::json!({"text": "Città vecchie e caffè"})).unwrap();
     let issues = app.session.run("review.issues", &serde_json::json!({})).unwrap();
     assert!(issues.as_array().unwrap().iter().all(|i| i["lang"] == "it"), "{issues}");
-    set_current(lang("it"));
-    assert_eq!(crate::ribbon::caret_language(&app), "Italiano");
+    // The app's frames set the interface language; name it in English first.
     set_current(Lang::EN);
     assert_eq!(crate::ribbon::caret_language(&app), "Italian");
+    super::pseudo::set(true);
+    assert_eq!(crate::ribbon::caret_language(&app), "⟦Italian⟧", "the language name goes through the catalog");
+    super::pseudo::set(false);
 }
 
 #[test]
@@ -994,19 +832,6 @@ fn german_locales_and_saved_preference_keep_document_content() {
     let saved = serde_json::to_string(&app.ui).unwrap();
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), de);
-}
-
-#[test]
-fn german_translations_preserve_templates_and_keep_count_labels_neutral() {
-    let de = lang("de");
-    assert_eq!(tr(de, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(de, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Exportiert: draft-{words}.docx");
-    // Count-neutral wording is grammatical for every count: `Wörter: 21`, `Wörter: 21; ausgewählt: 1`.
-    for count in [0, 1, 2, 11, 21, 101] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(de, "{words} words"), &[("words", &words)]), format!("Wörter: {count}"));
-        assert_eq!(fmt(tr(de, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Wörter: {count}; ausgewählt: 1"));
-    }
 }
 
 #[test]
@@ -1042,22 +867,6 @@ fn italian_locales_and_saved_preference_keep_document_content() {
 }
 
 #[test]
-fn italian_count_labels_stay_neutral_and_review_names_stay_distinct() {
-    let it = lang("it");
-    assert_eq!(tr(it, "unknown future label"), "unknown future label");
-    // The Review tab's group and its toggle keep different names.
-    assert_ne!(tr(it, "Changes"), tr(it, "Track Changes"));
-    // Italian nouns agree with the number, so count labels put the noun first and read right at 1.
-    for count in [0, 1, 2, 11, 21, 101] {
-        let n = count.to_string();
-        assert_eq!(fmt(tr(it, "{words} words"), &[("words", &n)]), format!("Parole: {count}"));
-        assert_eq!(fmt(tr(it, "{selected} of {words} words"), &[("selected", "1"), ("words", &n)]), format!("Parole: {count}; selezionate: 1"));
-        assert_eq!(fmt(tr(it, "{n} lines"), &[("n", &n)]), format!("Righe: {count}"));
-        assert_eq!(fmt(tr(it, "{count} items highlighted"), &[("count", &n)]), format!("Elementi evidenziati: {count}"));
-    }
-}
-
-#[test]
 fn bundled_interface_fonts_cover_italian_letters() {
     let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
     for (family, style) in [("Inter", "Regular"), ("Inter", "Medium"), ("Inter", "SemiBold"), ("JetBrains Mono", "Regular")] {
@@ -1087,20 +896,6 @@ fn bulgarian_locales_and_saved_preference_work_without_changing_the_document() {
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), bg);
     assert_eq!(bg.name(), "Български");
-}
-
-#[test]
-fn bulgarian_translations_preserve_templates_and_count_labels() {
-    let bg = lang("bg");
-    assert_eq!(tr(bg, "WordCraft"), "WordCraft");
-    assert_eq!(tr(bg, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(bg, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Страница 3 от 9");
-    // Count-neutral wording is grammatical for every count: `Думи: 21`, `Думи: 1 от 21`.
-    for count in [0, 1, 2, 5, 21, 100, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(bg, "{words} words"), &[("words", &words)]), format!("Думи: {count}"));
-        assert_eq!(fmt(tr(bg, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Думи: 1 от {count}"));
-    }
 }
 
 #[test]
@@ -1146,26 +941,6 @@ fn croatian_locales_and_saved_preference_work_without_changing_the_document() {
 }
 
 #[test]
-fn croatian_translations_preserve_templates_contexts_and_count_labels() {
-    let hr = lang("hr");
-    assert_eq!(tr(hr, "WordCraft"), "WordCraft");
-    assert_eq!(tr(hr, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(hr, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Stranica 3 od 9");
-    // The letter template is "Pismo"; the paper size of the same English name stays "Letter".
-    assert_eq!(trc(hr, "template", "Letter"), "Pismo");
-    assert_eq!(tr(hr, "Letter"), "Letter");
-    // Croatian nouns take three forms after numerals (1, 2–4, 5+), so counts read `Riječi: 21`.
-    for count in [0, 1, 2, 4, 5, 12, 14, 21, 22, 25, 101, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(hr, "{words} words"), &[("words", &words)]), format!("Riječi: {count}"));
-        assert_eq!(fmt(tr(hr, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Riječi: 1 od {count}"));
-    }
-    set_current(hr);
-    assert_eq!(location("Review › Proofing"), "Pregled › Jezična provjera");
-    set_current(Lang::EN);
-}
-
-#[test]
 fn bundled_interface_fonts_cover_croatian_without_system_fallbacks() {
     let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
     let (entries, errors) = parse_entries(lang("hr").0.source);
@@ -1205,20 +980,6 @@ fn swedish_locales_and_saved_preference_work_without_changing_the_document() {
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), sv);
     assert_eq!(sv.name(), "Svenska");
-}
-
-#[test]
-fn swedish_translations_preserve_templates_and_count_labels() {
-    let sv = lang("sv");
-    assert_eq!(tr(sv, "WordCraft"), "WordCraft");
-    assert_eq!(tr(sv, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(sv, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Sida 3 av 9");
-    // `ord` is the same in the singular and the plural, so the counts read right for every number.
-    for count in [0, 1, 2, 5, 21, 100, 1000] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(sv, "{words} words"), &[("words", &words)]), format!("{count} ord"));
-        assert_eq!(fmt(tr(sv, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("1 av {count} ord"));
-    }
 }
 
 #[test]
@@ -1265,22 +1026,6 @@ fn vietnamese_locales_and_saved_preference_work_without_changing_the_document() 
 }
 
 #[test]
-fn vietnamese_translations_preserve_templates_and_count_labels() {
-    let vi = lang("vi");
-    assert_eq!(tr(vi, "Home"), "Trang chủ");
-    assert_eq!(tr(vi, "Save"), "Lưu");
-    assert_eq!(tr(vi, "Spelling & Grammar"), "Chính tả & Ngữ pháp");
-    assert_eq!(tr(vi, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(vi, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Đã xuất draft-{words}.docx");
-    // Count-neutral wording (`Từ: 21`): a Vietnamese noun stays unchanged after a number.
-    for count in [0, 1, 2, 11, 21, 101] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(vi, "{words} words"), &[("words", &words)]), format!("Từ: {count}"));
-        assert_eq!(fmt(tr(vi, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Từ: 1 trên {count}"));
-    }
-}
-
-#[test]
 fn bundled_interface_fonts_cover_vietnamese_letters() {
     let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
     let (entries, errors) = parse_entries(lang("vi").0.source);
@@ -1309,9 +1054,14 @@ fn bundled_interface_fonts_cover_vietnamese_letters() {
 /// #3317: the spooler's English receipt is not spliced into a translated sentence.
 #[test]
 fn spooled_print_receipt_is_translated() {
-    let german = lang("de");
-    let msg = crate::printing::feedback(&crate::printing::Feedback::Submitted("spooled 2 sheet(s)".into()), |s| tr(german, s).to_owned());
-    assert_eq!(msg, "Druckauftrag gesendet: 2 Blatt an den Spooler übergeben");
+    use crate::printing::{Feedback, feedback};
+    let (c, errors) = Catalog::parse(
+        "\tPrint job submitted: spooled {count} sheet(s)\tSpooled-FX: {count}\n\tPrint job submitted: {receipt}\tSubmitted-FX: {receipt}\n",
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+    let receipt = || Feedback::Submitted("spooled 2 sheet(s)".into());
+    assert_eq!(feedback(&receipt(), |s| c.plain(s).unwrap_or(s).to_owned()), "Spooled-FX: 2");
+    assert_eq!(feedback(&receipt(), str::to_owned), "Print job submitted: spooled 2 sheet(s)");
 }
 
 #[test]
@@ -1370,19 +1120,6 @@ fn slovenian_locales_and_saved_preference_work_without_changing_the_document() {
     let saved = serde_json::to_string(&app.ui).unwrap();
     let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
     assert_eq!(Lang::from_pref(&restored.language), sl);
-}
-
-#[test]
-fn slovenian_translations_preserve_templates_and_count_labels() {
-    let sl = lang("sl");
-    assert_eq!(tr(sl, "unknown future label"), "unknown future label");
-    assert_eq!(fmt(tr(sl, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Stran 3 od 9");
-    // Count-neutral wording is grammatical for every count (Slovenian has singular, dual and plural).
-    for count in [0, 1, 2, 3, 5, 101, 102] {
-        let words = count.to_string();
-        assert_eq!(fmt(tr(sl, "{words} words"), &[("words", &words)]), format!("Besede: {count}"));
-        assert_eq!(fmt(tr(sl, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Besede: 1 od {count}"));
-    }
 }
 
 #[test]

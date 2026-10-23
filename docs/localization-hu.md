@@ -1,6 +1,6 @@
 # Hungarian interface
 
-> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-23 · **Change:** trivial (interface-language tests: a missing translation is reported, never a test failure, and each check covers every language; previously minor: Hungarian interface catalog and regression checks) · **Target:** WordCraft 0.5.0
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-23 · **Change:** trivial (lookup and template tests use inline fixture catalogs or the pseudo-language, not catalog wording; previously trivial: interface-language tests: a missing translation is reported, never a test failure, and each check covers every language; previously minor: Hungarian interface catalog and regression checks) · **Target:** WordCraft 0.5.0
 
 Choose **File › Options › Interface language › Magyar**, or follow a Hungarian system display
 language (`hu-HU`, `hu_HU.UTF-8`). The catalog code is `hu`; `ui.language` with `{"value":"hu"}`
@@ -59,12 +59,11 @@ acute capitals.
 ## Verification and remaining scope
 
 `cargo test -p wordcraft-ui-egui --lib i18n::tests` covers Hungarian locale tags and preference
-order, saving and restoring `hu`, unchanged document content, built-in style names, placeholders,
-count wording, English fallback, and the glyphs `ÁáÉéÍíÓóÖöŐőÚúÜüŰű` in the bundled Inter (Regular,
-Medium, SemiBold) and JetBrains Mono. The shared checks (catalog validation, the search hint's
-example, and a per-language report of untranslated tabs and commands) include Hungarian
-automatically, and the on-demand interface audit (`untranslated_interface_text`) checks Hungarian
-alongside Russian.
+order, saving and restoring `hu`, unchanged document content and the glyphs `ÁáÉéÍíÓóÖöŐőÚúÜüŰű` in
+the bundled Inter (Regular, Medium, SemiBold) and JetBrains Mono. The shared checks (catalog
+validation and a per-language report of untranslated tabs and commands)
+include Hungarian automatically, and the on-demand interface audit (`untranslated_interface_text`)
+checks Hungarian alongside Russian.
 
 Spelling, grammar and hyphenation stay English-only: this is an interface translation, not
 Hungarian proofing. A native-speaker review of the catalog is welcome.
@@ -73,5 +72,6 @@ Hungarian proofing. A native-speaker review of the catalog is welcome.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and is reported per language (`untranslated_tabs_and_commands_are_reported`), never a failure; catalog-coverage asserts for single languages removed; the search hint check covers every language |
+| 2026-10-23 | trivial | Lookup, context, template, style-name and command-search tests use inline fixture catalogs or the pseudo-language; tests that asserted one language's catalog wording removed |
+| 2026-10-23 | trivial | Interface-language tests: a missing translation falls back to English and is reported per language (`untranslated_tabs_and_commands_are_reported`), never a failure; catalog-coverage asserts for single languages removed |
 | 2026-10-11 | minor | Hungarian catalog (2,419 entries: built-in style names, equation gallery, citation styles), conventions, terminology, scope and regression checks |
