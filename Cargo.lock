@@ -874,7 +874,7 @@ dependencies = [
 [[package]]
 name = "craft-pdf"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=8f5a2831614e632f91ad367f7af2a6e5b61b9529#8f5a2831614e632f91ad367f7af2a6e5b61b9529"
+source = "git+https://github.com/storytold/craft-libs?rev=d6b3fb96718ff16c2e1bd2a5eb0526ec6e2cffd7#d6b3fb96718ff16c2e1bd2a5eb0526ec6e2cffd7"
 dependencies = [
  "krilla",
  "thiserror 2.0.21",
@@ -2234,7 +2234,7 @@ dependencies = [
 [[package]]
 name = "krilla"
 version = "0.8.2"
-source = "git+https://github.com/storytold/craft-libs?rev=8f5a2831614e632f91ad367f7af2a6e5b61b9529#8f5a2831614e632f91ad367f7af2a6e5b61b9529"
+source = "git+https://github.com/storytold/craft-libs?rev=d6b3fb96718ff16c2e1bd2a5eb0526ec6e2cffd7#d6b3fb96718ff16c2e1bd2a5eb0526ec6e2cffd7"
 dependencies = [
  "base64",
  "bumpalo",
