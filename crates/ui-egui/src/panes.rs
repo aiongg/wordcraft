@@ -1409,7 +1409,7 @@ mod tests {
         let panel = |h: &egui_kittest::Harness<'static, crate::WordApp>, pane: Pane| h.get_by_label(&format!("Move Pane: {}", pane.title())).rect();
         let button =
             |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
-        let mut drag = |h: &mut egui_kittest::Harness<'static, crate::WordApp>, to: egui::Pos2| {
+        let drag = |h: &mut egui_kittest::Harness<'static, crate::WordApp>, to: egui::Pos2| {
             let from = h.get_by_label("Move Pane: Comments").rect().center();
             h.input_mut().events.extend([egui::Event::PointerMoved(from), button(from, true)]);
             h.run_steps(1);
