@@ -58,8 +58,8 @@ wuff = "0.2.9"
 brotli-decompressor = "5"
 vello_cpu = "0.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
-craft-pdf = { git = "https://github.com/aiongg/craft-libs", rev = "60d60d484db91911c63534df66aecdee016007f0", version = "=0.1.0", default-features = false, features = ["write"] }
-craft-update = { git = "https://github.com/aiongg/craft-libs", version = "=0.1.0", rev = "60d60d484db91911c63534df66aecdee016007f0", features = ["egui"] }
+craft-pdf = { git = "https://github.com/aiongg/craft-libs", rev = "6af6348135c2ce1bc1118efe99f5d2f4d9ac07c5", version = "=0.1.0", default-features = false, features = ["write"] }
+craft-update = { git = "https://github.com/aiongg/craft-libs", version = "=0.1.0", rev = "6af6348135c2ce1bc1118efe99f5d2f4d9ac07c5", features = ["egui"] }
 quick-xml = "0.41"
 zip = { version = "3", default-features = false, features = ["deflate"] }
 # zlib streams (compressed metafile pictures in `.doc` drawings); already in the lock as a dependency of other crates.
@@ -120,7 +120,7 @@ debug = 0
 
 # Required by craft-pdf: the backend rejects writers that failed during unwinding.
 [patch.crates-io]
-krilla = { git = "https://github.com/aiongg/craft-libs", rev = "60d60d484db91911c63534df66aecdee016007f0" }
+krilla = { git = "https://github.com/aiongg/craft-libs", rev = "6af6348135c2ce1bc1118efe99f5d2f4d9ac07c5" }
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
